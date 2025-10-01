@@ -12,7 +12,7 @@ NexusShell isn't just another terminal. It's packed with features designed for c
 
 * **Automatic Output Pagination** - Long command outputs are automatically split into navigable pages. No more losing your place in an endless scroll. You can easily move between pages using intuitive buttons or keyboard shortcuts (`PageUp`/`PageDown`).
 
-* **One-Click Full Copy** - Copy the entire output from your last command to the clipboard with a single click (`Ctrl+Shift+C`), regardless of its length. A success message "Command copied successfully" confirms the action.
+* **One-Click Full Copy** - Copy the entire output from your last command to the clipboard with a single click (`Ctrl+Shift+C`), regardless of its length.
 
 * **Advanced Command Editor** - Write and edit complex, multi-line scripts with ease using `Shift+Enter` for new lines. Execute the entire block by pressing `Enter`.
 
@@ -46,7 +46,7 @@ Installing NexusShell is straightforward:
 
 ## 💡 Example Commands
 
-Try these powerful PowerShell commands in NexusShell to explore your system. Simply select and copy any command below, then paste it into the Command Input box. NexusShell will display "Command copied successfully" when you copy text from the output area.
+Try these powerful PowerShell commands in NexusShell to explore your system. Simply type or paste any command into the Command Input box.
 
 ### 1. System Information
 Display detailed information about your computer's hardware and operating system.
@@ -110,7 +110,7 @@ Get-EventLog -LogName System -Newest 20
 |----------|---------|
 | `Enter` | Execute command |
 | `Shift+Enter` | New line in command editor |
-| `Ctrl+Shift+C` | Copy entire output (displays "Command copied successfully") |
+| `Ctrl+Shift+C` | Copy entire output |
 | `PageUp` | Previous output page |
 | `PageDown` | Next output page |
 | `Ctrl+A` | Select all text |
