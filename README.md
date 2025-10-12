@@ -2,6 +2,9 @@
 
 NexusShell is a modern, user-friendly GUI for Windows PowerShell, meticulously crafted to provide a clear, accessible, and powerful command-line experience. It separates command input from output, eliminating the clutter of traditional terminals and making it perfect for users who rely on screen readers or require a more structured workflow.
 
+## Screenshot
+![NexusShell Interface](/NexusShell.png)
+
 ## 🚀 Key Features
 
 NexusShell isn't just another terminal. It's packed with features designed for clarity, productivity, and accessibility.
@@ -137,6 +140,11 @@ NexusShell is released under the [MIT License](LICENSE).
 * **Issues**: Report bugs or request features via [GitHub Issues](https://github.com/Mohammedkhaled96/NexusShell/issues)
 * **Documentation**: Visit our [Wiki](https://github.com/Mohammedkhaled96/NexusShell/wiki) for detailed documentation
 * **Repository**: View the source code on [GitHub](https://github.com/Mohammedkhaled96/NexusShell)
+
+## 👨‍💻 Developers
+
+* **Farid Mohammed** - Core Developer
+* **Mohammed Khaled** - Core Developer
 
 ## 🙏 Acknowledgments
 
