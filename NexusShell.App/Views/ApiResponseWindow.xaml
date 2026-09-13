@@ -1,0 +1,151 @@
+<Window x:Class="NexusShell.App.Views.ApiResponseWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:models="clr-namespace:NexusShell.App.Models"
+        mc:Ignorable="d"
+        Title="API Response — Detail View"
+        MinWidth="700" MinHeight="500"
+        WindowState="Maximized"
+        Background="#1E1E1E" Foreground="#CCCCCC"
+        WindowStartupLocation="CenterOwner"
+        FocusManager.FocusedElement="{Binding ElementName=ResponseBodyTxt}"
+        AutomationProperties.Name="API Response Detail Window"
+        KeyDown="Window_KeyDown">
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />  <!-- Status summary -->
+            <RowDefinition Height="*"    />  <!-- Response tabs -->
+            <RowDefinition Height="Auto" />  <!-- Action buttons -->
+        </Grid.RowDefinitions>
+
+        <!-- Status summary header -->
+        <Border Grid.Row="0"
+                Background="#252526" Padding="14,12"
+                BorderBrush="#3C3C3C" BorderThickness="1"
+                Margin="0,0,0,12"
+                AutomationProperties.Name="Response summary">
+            <StackPanel>
+                <!-- Status code + description -->
+                <WrapPanel Orientation="Horizontal" Margin="0,0,0,10">
+                    <TextBlock Text="Status: " FontSize="14" Foreground="#888" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding StatusCode}"
+                               FontWeight="Bold" FontSize="20"
+                               Foreground="{Binding StatusCode, Converter={StaticResource StatusColorConverter}}"
+                               VerticalAlignment="Center"
+                               AutomationProperties.Name="HTTP status code" />
+                    <TextBlock Text="{Binding StatusDescription}"
+                               Margin="10,0,0,0" FontSize="16"
+                               Foreground="{Binding StatusCode, Converter={StaticResource StatusColorConverter}}"
+                               VerticalAlignment="Center"
+                               AutomationProperties.Name="HTTP status description" />
+                </WrapPanel>
+
+                <!-- Metrics -->
+                <UniformGrid Columns="3">
+                    <StackPanel>
+                        <TextBlock Text="TIME" FontSize="10" Foreground="#888" FontWeight="Bold" />
+                        <TextBlock Text="{Binding ResponseTimeMs, StringFormat='{}{0} ms'}"
+                                   FontSize="16" FontWeight="Bold" Foreground="White"
+                                   AutomationProperties.Name="Response time" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="SIZE" FontSize="10" Foreground="#888" FontWeight="Bold" />
+                        <TextBlock Text="{Binding FormattedSize}"
+                                   FontSize="16" FontWeight="Bold" Foreground="White"
+                                   AutomationProperties.Name="Response size" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="RESULT" FontSize="10" Foreground="#888" FontWeight="Bold" />
+                        <TextBlock Text="{Binding IsSuccess}"
+                                   FontSize="16" FontWeight="Bold"
+                                   Foreground="{Binding StatusCode, Converter={StaticResource StatusColorConverter}}"
+                                   AutomationProperties.Name="Request success status" />
+                    </StackPanel>
+                </UniformGrid>
+            </StackPanel>
+        </Border>
+
+        <!-- Response tabs -->
+        <TabControl Grid.Row="1"
+                    Background="Transparent" BorderBrush="#3C3C3C" BorderThickness="1"
+                    AutomationProperties.Name="Response detail tabs"
+                    AutomationProperties.LiveSetting="Polite">
+
+            <!-- Body -->
+            <TabItem Header="Body" AutomationProperties.Name="Response body tab">
+                <TextBox x:Name="ResponseBodyTxt"
+                         Text="{Binding Body, Mode=OneWay}"
+                         IsReadOnly="True" IsReadOnlyCaretVisible="True"
+                         AcceptsReturn="True" TextWrapping="NoWrap"
+                         Background="#1A1A1A" Foreground="#D4D4D4" CaretBrush="White"
+                         BorderThickness="0" Padding="12"
+                         FontFamily="Consolas" FontSize="13"
+                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                         IsTabStop="True"
+                         AutomationProperties.Name="Response body content"
+                         AutomationProperties.HelpText="Read-only. Use arrow keys to navigate line-by-line. Ctrl+A selects all." />
+            </TabItem>
+
+            <!-- Headers -->
+            <TabItem Header="Headers" AutomationProperties.Name="Response headers tab">
+                <TextBox Text="{Binding Headers, Converter={StaticResource DictionaryToTextConverter}}"
+                         IsReadOnly="True" IsReadOnlyCaretVisible="True"
+                         AcceptsReturn="True" TextWrapping="NoWrap"
+                         Background="#1A1A1A" Foreground="#D4D4D4" CaretBrush="White"
+                         BorderThickness="0" Padding="12"
+                         FontFamily="Consolas" FontSize="13"
+                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                         AutomationProperties.Name="Response headers"
+                         AutomationProperties.HelpText="Read-only list of response headers in Key: Value format." />
+            </TabItem>
+
+            <!-- Cookies -->
+            <TabItem Header="Cookies" AutomationProperties.Name="Response cookies tab">
+                <TextBox Text="{Binding Cookies, Converter={StaticResource DictionaryToTextConverter}}"
+                         IsReadOnly="True" IsReadOnlyCaretVisible="True"
+                         AcceptsReturn="True" TextWrapping="NoWrap"
+                         Background="#1A1A1A" Foreground="#D4D4D4" CaretBrush="White"
+                         BorderThickness="0" Padding="12"
+                         FontFamily="Consolas" FontSize="13"
+                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                         AutomationProperties.Name="Response cookies"
+                         AutomationProperties.HelpText="Cookies parsed from Set-Cookie response headers." />
+            </TabItem>
+        </TabControl>
+
+        <!-- Action bar -->
+        <Border Grid.Row="2"
+                Background="#252526" BorderBrush="#3C3C3C" BorderThickness="0,1,0,0"
+                Margin="0,10,0,0" Padding="0,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="4,0">
+                    <TextBlock Text="Tip: Ctrl+A to select all body text"
+                               Foreground="#666" FontSize="12" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="Copy Body"
+                            Click="CopyBody_Click"
+                            Width="140" Height="40" Margin="0,0,12,0"
+                            Background="#3C3C3C" Foreground="White" BorderThickness="0"
+                            FontSize="14" FontWeight="SemiBold"
+                            AutomationProperties.Name="Copy response body to clipboard" />
+                    <Button Content="CLOSE"
+                            Click="Close_Click"
+                            Width="120" Height="40"
+                            Background="#007ACC" Foreground="White" FontWeight="Bold" BorderThickness="0"
+                            FontSize="14"
+                            AutomationProperties.Name="Close response window" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

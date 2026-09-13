@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:;" />
+  <title>NexusShell Output</title>
+  <script src="xterm.js"></script>
+  <style>
+    /* Minimal theme tokens (subset of v4.0.0 themes.css) */
+    :root {
+      --bg-primary: #1e1e1e;
+      --bg-tertiary: #2d2d2d;
+      --bg-hover: #2a2a2a;
+      --border-color: #3a3a3a;
+      --accent-color: #007acc;
+      --accent-hover: #4ec9ff;
+      --success-color: #00dd00;
+      --text-primary: #e6e6e6;
+      --text-muted: #9aa0a6;
+      --font-mono: "Cascadia Code", "Cascadia Mono", Consolas, "Courier New", monospace;
+      --font-sans: "Segoe UI", system-ui, sans-serif;
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+    }
+
+    /* Scrollable transcript host */
+    #terminal-container {
+      position: absolute;
+      inset: 0;
+      overflow-y: auto;
+      padding: 14px;
+      box-sizing: border-box;
+    }
+
+    .tab-terminal-log { display: flex; flex-direction: column; gap: 16px; min-height: 100%; }
+
+    /* ── v4.0.0 command-block styling (accessible) ─────────────────────── */
+    .command-block {
+      display: flex; flex-direction: column;
+      border-left: 2px solid var(--border-color);
+      padding-left: 12px; margin-bottom: 8px; position: relative;
+    }
+    .command-block:focus-within { border-left-color: var(--accent-color); }
+    .command-block.running { border-left-color: var(--accent-color); }
+    .command-block.running .command-input { color: var(--accent-color); }
+
+    .command-input {
+      font-family: var(--font-mono); font-size: 14px; font-weight: bold;
+      color: var(--accent-hover); margin: 0 0 8px 0;
+      display: flex; align-items: center; gap: 8px; outline: none;
+    }
+    .command-input::before { content: "\276F"; color: var(--success-color); font-weight: 800; }
+
+    .command-output-wrapper {
+      position: relative; background-color: #1a1a1a;
+      border: 1px solid var(--border-color); border-radius: 6px;
+      padding: 12px; overflow: hidden;
+    }
+    .command-output {
+      font-family: var(--font-mono); font-size: 13.5px; line-height: 1.6;
+      color: #cccccc; white-space: pre-wrap; word-break: break-word;
+      overflow-x: auto; margin: 0; outline: none;
+    }
+
+    .copy-output-btn {
+      position: absolute; top: 8px; right: 8px;
+      background-color: var(--bg-hover); color: var(--text-muted);
+      border: 1px solid var(--border-color); border-radius: 4px;
+      padding: 4px 8px; font-size: 11px; font-family: var(--font-sans);
+      cursor: pointer; opacity: 0.25; transition: opacity .2s; z-index: 5;
+    }
+    .command-output-wrapper:hover .copy-output-btn, .copy-output-btn:focus-visible {
+      opacity: 1; color: var(--text-primary); background-color: var(--bg-tertiary);
+    }
+
+    /* Visually-hidden screen-reader live region */
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+
+    /* ── Interactive Screen dialog styling ───────────────────────────── */
+    .modal-dialog {
+      margin: auto;
+      background-color: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      width: 90%;
+      max-width: 500px;
+      padding: 20px;
+      outline: none;
+      box-sizing: border-box;
+    }
+    .modal-dialog::backdrop {
+      background-color: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(2px);
+    }
+    .dialog-content {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .dialog-content h2 {
+      font-size: 18px;
+      font-family: var(--font-sans);
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 8px;
+      margin: 0;
+    }
+    .dialog-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .dialog-footer button {
+      padding: 8px 20px;
+      font-family: var(--font-sans);
+      font-weight: 600;
+      font-size: 14px;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+    }
+    .btn-confirm {
+      background-color: var(--accent-color);
+      color: #ffffff;
+    }
+    .btn-confirm:hover {
+      background-color: var(--accent-hover);
+    }
+    .btn-cancel {
+      background-color: var(--bg-hover);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+    }
+    .btn-cancel:hover {
+      background-color: var(--bg-tertiary);
+    }
+  </style>
+</head>
+<body>
+  <main id="terminal-container" role="document" aria-label="Terminal output">
+    <div id="log" class="tab-terminal-log" role="presentation"></div>
+  </main>
+  <div id="sr-announcer" class="sr-only" role="status" aria-live="assertive" aria-atomic="true"></div>
+
+  <!-- Interactive Prompt Overlay Dialog -->
+  <dialog id="dlg-interactive" class="modal-dialog" aria-labelledby="interactive-title">
+    <div class="dialog-content">
+      <h2 id="interactive-title">Interaction Required</h2>
+      <div id="interactive-body">
+        <!-- Dynamically generated forms/selectors go here -->
+      </div>
+      <div class="dialog-footer">
+        <button id="btn-interactive-cancel" class="btn-cancel">Cancel (Esc)</button>
+        <button id="btn-interactive-confirm" class="btn-confirm">Confirm (Enter)</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script>
+    // ── NexusShell output renderer ───────────────────────────────────────
+    // Accessibility-first port of NexusShell-4.0.0: a HIDDEN xterm.js
+    // instance resolves the raw ConPTY stream (cursor moves / \r / ANSI all
+    // collapse to clean text), and the resolved text is rendered into
+    // accessible HTML command-blocks (<h3> heading + <pre role="log"
+    // aria-live>) that JAWS/NVDA read as plain text. xterm.js is NEVER shown.
+    (function () {
+      var wv = window.chrome && window.chrome.webview;
+
+      // Hidden VT parser — created but never .open()'d (no canvas, no DOM).
+      var xterm = new window.Terminal({ cols: 120, rows: 30, scrollback: 5000, allowProposedApi: true });
+
+      var logEl = document.getElementById('log');
+      var containerEl = document.getElementById('terminal-container');
+      var announcer = document.getElementById('sr-announcer');
+
+      var S = {
+        currentBlock: null,
+        isSystemBlock: false,
+        commandCounter: 0,
+        commandStartLine: 0,
+        commandLock: false,
+        commandLockTimeout: null,
+        promptDebounceTimeout: null,
+        shellCmd: 'powershell.exe',
+        interactivePromptTimeout: null,
+        isInteractivePromptActive: false
+      };
+
+      function announce(msg) { announcer.textContent = msg; }
+
+      // Keep the latest output in view, but DON'T yank the viewport down while the
+      // user (or a screen-reader cursor) has scrolled up to read earlier output.
+      function scrollOutput() {
+        var distanceFromBottom = containerEl.scrollHeight - containerEl.scrollTop - containerEl.clientHeight;
+        if (distanceFromBottom < 60) containerEl.scrollTop = containerEl.scrollHeight;
+      }
+
+      // Collapse the wide vertical gaps that full-screen TUIs leave behind: a run of
+      // blank lines becomes a single blank line, and leading/trailing blanks are
+      // dropped. Paragraph spacing (single blank lines) is preserved.
+      function squashBlanks(lines) {
+        var out = [];
+        var blankRun = 0;
+        for (var i = 0; i < lines.length; i++) {
+          if (lines[i].trim() === '') {
+            blankRun++;
+            if (blankRun <= 1) out.push('');
+          } else {
+            blankRun = 0;
+            out.push(lines[i]);
+          }
+        }
+        while (out.length && out[0] === '') out.shift();
+        while (out.length && out[out.length - 1] === '') out.pop();
+        return out;
+      }
+
+      function createNewBlock(commandText, isSystem) {
+        S.commandCounter++;
+        S.isSystemBlock = isSystem;
+
+        var block = document.createElement('section');
+        block.className = 'command-block running';
+        block.setAttribute('role', 'region');
+        block.setAttribute('aria-label', 'Command Block ' + S.commandCounter);
+
+        var heading = document.createElement('h3');
+        heading.className = 'command-input';
+        heading.id = 'heading-' + S.commandCounter;
+        heading.tabIndex = -1;
+        heading.textContent = commandText;
+        heading.setAttribute('aria-label', 'Command ' + S.commandCounter + ': ' + commandText);
+
+        var wrap = document.createElement('div');
+        wrap.className = 'command-output-wrapper';
+
+        var pre = document.createElement('pre');
+        pre.className = 'command-output';
+        pre.setAttribute('role', 'log');
+        pre.setAttribute('aria-live', 'polite');
+        pre.setAttribute('aria-labelledby', heading.id);
+
+        wrap.appendChild(pre);
+        block.appendChild(heading);
+        block.appendChild(wrap);
+        logEl.appendChild(block);
+        S.currentBlock = block;
+        scrollOutput();
+        announce('Running command: ' + commandText);
+      }
+
+      function addCopyButton(block) {
+        if (!block) return;
+        var wrap = block.querySelector('.command-output-wrapper');
+        var pre = block.querySelector('.command-output');
+        if (!wrap || !pre || wrap.querySelector('.copy-output-btn')) return;
+        var btn = document.createElement('button');
+        btn.className = 'copy-output-btn';
+        btn.textContent = 'Copy';
+        btn.setAttribute('aria-label', 'Copy output of this command');
+        btn.addEventListener('click', function () {
+          try { 
+            var textToCopy = pre.getAttribute('data-raw-content') || pre.textContent;
+            navigator.clipboard.writeText(textToCopy); 
+            announce('Output copied to clipboard'); 
+          } catch (e) {}
+        });
+        wrap.appendChild(btn);
+      }
+
+      function finalizeCurrentBlock() {
+        if (S.commandLockTimeout) { clearTimeout(S.commandLockTimeout); S.commandLockTimeout = null; }
+        S.commandLock = false;
+        if (S.promptDebounceTimeout) { clearTimeout(S.promptDebounceTimeout); S.promptDebounceTimeout = null; }
+        if (!S.currentBlock) return;
+        S.currentBlock.classList.remove('running');
+        addCopyButton(S.currentBlock);
+        S.currentBlock = null;
+        S.isSystemBlock = false;
+        announce('Command finished.');
+      }
+
+      // Resolve the live region (commandStartLine → cursor) from xterm's buffer
+      // and mirror it into the current block's <pre> as clean text.
+      function syncHtmlBlock() {
+        if (!S.currentBlock) createNewBlock('System Output', true);
+        var pre = S.currentBlock.querySelector('.command-output');
+        if (!pre) return;
+
+        var buffer = xterm.buffer.active;
+        var start = Math.max(0, S.commandStartLine);
+        var end = buffer.baseY + buffer.cursorY;
+
+        var lines = [];
+        for (var i = start; i <= end; i++) {
+          var line = buffer.getLine(i);
+          if (line) lines.push(line.translateToString(true)); // trim right
+        }
+        var squashed = squashBlanks(lines);
+        pre.setAttribute('data-raw-content', squashed.join('\n'));
+        var html = '';
+        for (var k = 0; k < squashed.length; k++) {
+          var safeStr = squashed[k]
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+          if (safeStr === '') safeStr = '<br>';
+          html += '<div dir="auto" style="min-height: 1.2em;">' + safeStr + '</div>';
+        }
+        pre.innerHTML = html;
+        scrollOutput();
+
+        // Finalize the block once a shell prompt has returned (debounced).
+        var promptDetected = false;
+        var scanStart = Math.max(start, end - 4);
+        for (var j = end; j >= scanStart; j--) {
+          var t = buffer.getLine(j) ? buffer.getLine(j).translateToString(true) : '';
+          if (detectPromptReturned(t, S.shellCmd)) { promptDetected = true; break; }
+        }
+        if (!S.commandLock && end > S.commandStartLine && promptDetected && !S.promptDebounceTimeout) {
+          S.promptDebounceTimeout = setTimeout(function () {
+            S.promptDebounceTimeout = null;
+            var b = xterm.buffer.active;
+            var cEnd = b.baseY + b.cursorY;
+            var cStart = Math.max(0, S.commandStartLine);
+            var still = false;
+            for (var k = cEnd; k >= Math.max(cStart, cEnd - 4); k--) {
+              var lt = b.getLine(k) ? b.getLine(k).translateToString(true) : '';
+              if (detectPromptReturned(lt, S.shellCmd)) { still = true; break; }
+            }
+            if (still) finalizeCurrentBlock();
+          }, 400);
+        }
+
+        // Reset and trigger the JS-based interactive prompt detector
+        if (S.interactivePromptTimeout) {
+          clearTimeout(S.interactivePromptTimeout);
+        }
+        if (S.currentBlock && !S.isSystemBlock && !S.isInteractivePromptActive) {
+          S.interactivePromptTimeout = setTimeout(function () {
+            checkInteractivePrompt();
+          }, 300);
+        }
+      }
+
+      function handleOutput(data) {
+        if (S.promptDebounceTimeout) { clearTimeout(S.promptDebounceTimeout); S.promptDebounceTimeout = null; }
+        xterm.write(data, function () { syncHtmlBlock(); });
+      }
+
+      // Called by the host when the user submits a command from the WPF box.
+      function startCommand(commandText) {
+        S.isInteractivePromptActive = false;
+        if (S.interactivePromptTimeout) {
+          clearTimeout(S.interactivePromptTimeout);
+          S.interactivePromptTimeout = null;
+        }
+        // While a user command is live, treat further input as interactive (no new block).
+        if (S.currentBlock && !S.isSystemBlock) return;
+        if (S.currentBlock) finalizeCurrentBlock();
+
+        var buffer = xterm.buffer.active;
+        S.commandStartLine = buffer.baseY + buffer.cursorY;
+
+        S.commandLock = true;
+        if (S.commandLockTimeout) clearTimeout(S.commandLockTimeout);
+        S.commandLockTimeout = setTimeout(function () {
+          S.commandLock = false; S.commandLockTimeout = null; syncHtmlBlock();
+        }, 400);
+
+        createNewBlock(commandText, false);
+      }
+
+      function addOutputBlock(title, text) {
+        createNewBlock(title, true);
+        var pre = S.currentBlock.querySelector('.command-output');
+        if (pre) {
+          pre.setAttribute('data-raw-content', text);
+          var lines = text.split('\n');
+          var html = '';
+          for (var k = 0; k < lines.length; k++) {
+            var safeStr = lines[k].replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            if (safeStr === '') safeStr = '<br>';
+            html += '<div dir="auto" style="min-height: 1.2em;">' + safeStr + '</div>';
+          }
+          pre.innerHTML = html;
+        }
+        finalizeCurrentBlock();
+      }
+
+      function clearAll() {
+        logEl.innerHTML = '';
+        S.currentBlock = null;
+        S.isSystemBlock = false;
+        S.commandCounter = 0;
+        try { xterm.clear(); } catch (e) {}
+        announce('Terminal output cleared.');
+      }
+
+      // v4.0.0 prompt detector (verbatim).
+      function detectPromptReturned(data, shellCmd) {
+        var clean = (data || '').trim();
+        if (!clean) return false;
+        return /PS [A-Z]:\\[^>]*>$/i.test(clean) ||
+               /PS >$/i.test(clean) ||
+               /[A-Z]:\\[^>]*>$/i.test(clean) ||
+               /[\w\-]+@[\w\-]+:.*[\$\#]\s*$/i.test(clean) ||
+               clean === '>' || clean === '>>>' || clean === '?' || clean === ':' ||
+               /^\w+>$/.test(clean);
+      }
+
+      // ── Host bridge (replaces Electron IPC) ────────────────────────────
+      // First char selects the channel:
+      //   o = raw output, c = command-start, x = system message,
+      //   k = clear, s = set shell command (for prompt detection)
+      //   i = interactive prompt configuration
+      if (wv) {
+        wv.addEventListener('message', function (e) {
+          var m = e.data;
+          if (typeof m !== 'string' || m.length === 0) return;
+          var kind = m[0];
+          var body = m.slice(1);
+          switch (kind) {
+            case 'o': handleOutput(body); break;
+            case 'c': startCommand(body); break;
+            case 'x': addOutputBlock('System', body); break;
+            case 'k': clearAll(); break;
+            case 's': if (body) S.shellCmd = body; break;
+            case 'i': showInteractivePrompt(JSON.parse(body)); break;
+          }
+        });
+        wv.postMessage('R'); // ready → host flushes buffered output
+      }
+
+      var dlg = document.getElementById('dlg-interactive');
+      var titleEl = document.getElementById('interactive-title');
+      var bodyEl = document.getElementById('interactive-body');
+      var confirmBtn = document.getElementById('btn-interactive-confirm');
+      var cancelBtn = document.getElementById('btn-interactive-cancel');
+
+      function showInteractivePrompt(prompt) {
+        if (!dlg || !bodyEl) return;
+
+        titleEl.textContent = prompt.title;
+        
+        var optionsHtml = '';
+        if (prompt.type === 'yesno') {
+          optionsHtml = `
+            <div class="interactive-options-list" role="radiogroup" aria-labelledby="interactive-title" style="display:flex; flex-direction:column; gap:10px;">
+              <div class="radio-option" style="display:flex; align-items:center; gap:8px;">
+                <input type="radio" name="interactive-choice" id="choice-yes" value="y" checked style="width:18px; height:18px;">
+                <label for="choice-yes" style="font-family:var(--font-sans); font-size:15px; cursor:pointer;">Yes (y)</label>
+              </div>
+              <div class="radio-option" style="display:flex; align-items:center; gap:8px;">
+                <input type="radio" name="interactive-choice" id="choice-no" value="n" style="width:18px; height:18px;">
+                <label for="choice-no" style="font-family:var(--font-sans); font-size:15px; cursor:pointer;">No (n)</label>
+              </div>
+            </div>
+          `;
+        } else if (prompt.type === 'list' || prompt.type === 'tui') {
+          optionsHtml = `
+            <div class="interactive-options-list" role="radiogroup" aria-labelledby="interactive-title" style="display:flex; flex-direction:column; gap:8px;">
+              ${prompt.options.map((opt, idx) => `
+                <div class="radio-option" style="display:flex; align-items:center; gap:8px;">
+                  <input type="radio" name="interactive-choice" id="choice-${idx}" value="${idx}" ${idx === prompt.currentIndex ? 'checked' : ''} style="width:16px; height:16px;">
+                  <label for="choice-${idx}" style="font-family:var(--font-sans); font-size:14px; cursor:pointer;">
+                    ${opt.text} ${opt.shortcutKey ? `<span style="background-color:var(--bg-hover); padding:2px 6px; border-radius:4px; font-size:11px; margin-left:6px; border:1px solid var(--border-color); color:var(--text-muted);">(${opt.shortcutKey})</span>` : ''}
+                  </label>
+                </div>
+              `).join('')}
+            </div>
+          `;
+        }
+
+        bodyEl.innerHTML = optionsHtml;
+        confirmBtn.textContent = prompt.confirmText || "Confirm";
+        cancelBtn.textContent = prompt.cancelText || "Cancel";
+        
+        if (prompt.allowCancel) {
+          cancelBtn.style.display = 'inline-block';
+        } else {
+          cancelBtn.style.display = 'none';
+        }
+
+        dlg.showModal();
+        manageFocusTrap(dlg, true);
+
+        // Focus the first checked input
+        setTimeout(function() {
+          var checked = bodyEl.querySelector('input[type="radio"]:checked');
+          if (checked) checked.focus();
+        }, 50);
+
+        var confirmed = false;
+
+        function handleConfirm() {
+          var selectedInput = bodyEl.querySelector('input[name="interactive-choice"]:checked');
+          if (selectedInput) {
+            var val = selectedInput.value;
+            confirmed = true;
+            manageFocusTrap(dlg, false);
+            dlg.close();
+
+            if (prompt.type === 'yesno') {
+              var token = val === 'y' ? prompt.options[0].value : prompt.options[1].value;
+              sendResult({ index: val === 'y' ? 0 : 1, value: token, cancel: false });
+            } else {
+              var idx = parseInt(val, 10);
+              sendResult({ index: idx, value: prompt.options[idx].value, cancel: false });
+            }
+          } else {
+            manageFocusTrap(dlg, false);
+            dlg.close();
+          }
+        }
+
+        function handleCancel() {
+          manageFocusTrap(dlg, false);
+          dlg.close();
+        }
+
+        function handleKeyDown(e) {
+          if (e.key === 'Enter') {
+            if (document.activeElement !== cancelBtn) {
+              e.preventDefault();
+              handleConfirm();
+            }
+          } else if (e.key === 'Escape') {
+            if (prompt.allowCancel) {
+              e.preventDefault();
+              handleCancel();
+            } else {
+              e.preventDefault();
+            }
+          } else if (prompt.type === 'yesno') {
+            var keyLower = e.key.toLowerCase();
+            if (keyLower === 'y') {
+              e.preventDefault();
+              var yesInput = document.getElementById('choice-yes');
+              if (yesInput) { yesInput.checked = true; handleConfirm(); }
+            } else if (keyLower === 'n') {
+              e.preventDefault();
+              var noInput = document.getElementById('choice-no');
+              if (noInput) { noInput.checked = true; handleConfirm(); }
+            }
+          } else if (prompt.type === 'list') {
+            var keyLower = e.key.toLowerCase();
+            var matchedOptIdx = prompt.options.findIndex(function(o) { return o.shortcutKey.toLowerCase() === keyLower; });
+            if (matchedOptIdx >= 0) {
+              e.preventDefault();
+              var radio = document.getElementById('choice-' + matchedOptIdx);
+              if (radio) {
+                radio.checked = true;
+                handleConfirm();
+              }
+            }
+          }
+        }
+
+        dlg.addEventListener('keydown', handleKeyDown);
+
+        function cleanup() {
+          dlg.removeEventListener('keydown', handleKeyDown);
+          dlg.removeEventListener('close', cleanup);
+          if (!confirmed) {
+            sendResult({ cancel: true });
+          }
+        }
+
+        dlg.addEventListener('close', cleanup);
+
+        var newConfirm = confirmBtn.cloneNode(true);
+        confirmBtn.parentNode.replaceChild(newConfirm, confirmBtn);
+        confirmBtn = newConfirm;
+        confirmBtn.addEventListener('click', handleConfirm);
+
+        var newCancel = cancelBtn.cloneNode(true);
+        cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
+        cancelBtn = newCancel;
+        cancelBtn.addEventListener('click', handleCancel);
+      }
+
+      function sendResult(resultObj) {
+        if (wv) {
+          wv.postMessage('i' + JSON.stringify(resultObj));
+        }
+      }
+
+      // Minimal Focus Trap
+      var activeFocusTrapCleanup = null;
+      function manageFocusTrap(container, activate) {
+        if (activeFocusTrapCleanup) {
+          activeFocusTrapCleanup();
+          activeFocusTrapCleanup = null;
+        }
+        if (!activate) return;
+
+        var focusableSelectors = 'button, input, select, textarea, [tabindex]:not([tabindex="-1"])';
+        var getFocusableElements = function() {
+          return Array.from(container.querySelectorAll(focusableSelectors))
+            .filter(function(el) {
+              var style = window.getComputedStyle(el);
+              return style.display !== 'none' && style.visibility !== 'hidden' && !el.disabled;
+            });
+        };
+
+        var handleTab = function(e) {
+          if (e.key !== 'Tab') return;
+          var focusables = getFocusableElements();
+          if (focusables.length === 0) {
+            e.preventDefault();
+            return;
+          }
+          var firstEl = focusables[0];
+          var lastEl = focusables[focusables.length - 1];
+
+          if (e.shiftKey) {
+            if (document.activeElement === firstEl) {
+              lastEl.focus();
+              e.preventDefault();
+            }
+          } else {
+            if (document.activeElement === lastEl) {
+              firstEl.focus();
+              e.preventDefault();
+            }
+          }
+        };
+
+        container.addEventListener('keydown', handleTab);
+        activeFocusTrapCleanup = function() {
+          container.removeEventListener('keydown', handleTab);
+        };
+      }
+
+      function checkInteractivePrompt() {
+        if (!S.currentBlock || S.isSystemBlock || S.isInteractivePromptActive) return;
+
+        var buffer = xterm.buffer.active;
+        var start = Math.max(0, S.commandStartLine);
+        var end = buffer.baseY + buffer.cursorY;
+
+        var lastLine = buffer.getLine(end) ? buffer.getLine(end).translateToString(true) : '';
+        if (detectPromptReturned(lastLine, S.shellCmd)) {
+          return;
+        }
+
+        var lines = [];
+        for (var i = start; i <= end; i++) {
+          var line = buffer.getLine(i);
+          if (line) lines.push(line.translateToString(true));
+        }
+        var content = lines.join('\n');
+
+        var prompt = jsDetectPrompt(content);
+        if (prompt) {
+          S.isInteractivePromptActive = true;
+          if (wv) {
+            wv.postMessage('d' + JSON.stringify(prompt));
+          }
+        }
+      }
+
+      function jsDetectPrompt(content) {
+        return jsDetectTuiSelector(content) ||
+               jsDetectNumberedList(content) ||
+               jsDetectLetteredList(content) ||
+               jsDetectYesNo(content);
+      }
+
+      function jsDetectNumberedList(content) {
+        var regex = /^\s*(\d+)\s*[.):\]\->]+\s+(.+?)$/gm;
+        var matches = [];
+        var match;
+        regex.lastIndex = 0;
+        while ((match = regex.exec(content)) !== null) {
+          matches.push(match);
+        }
+        if (matches.length < 2) return null;
+        return buildListPrompt(content, matches, 'list');
+      }
+
+      function jsDetectLetteredList(content) {
+        var regex = /^\s*([a-zA-Z])\s*[.):\]\->]+\s+(.+?)$/gm;
+        var matches = [];
+        var match;
+        regex.lastIndex = 0;
+        while ((match = regex.exec(content)) !== null) {
+          matches.push(match);
+        }
+        if (matches.length < 2) return null;
+        return buildListPrompt(content, matches, 'list');
+      }
+
+      function buildListPrompt(content, matches, type) {
+        var items = matches.map(function(m) {
+          var index = content.indexOf(m[0]);
+          return {
+            key: m[1],
+            text: m[2].trim(),
+            endIndex: index + m[0].length
+          };
+        });
+
+        var lastItemEnd = items[items.length - 1].endIndex;
+        var tail = content.substring(lastItemEnd).trim();
+        var tailIsPrompt = !tail || tail.endsWith(':') || tail.endsWith('?') || tail.endsWith('>');
+        if (!tailIsPrompt) return null;
+
+        var firstItemIndex = content.indexOf(matches[0][0]);
+        var head = content.substring(0, firstItemIndex);
+        var headLines = head.split('\n');
+        var titleParts = [];
+        var linesCollected = 0;
+
+        for (var i = headLines.length - 1; i >= 0 && linesCollected < 4; i--) {
+          var line = headLines[i].trim();
+          if (!line) continue;
+          if (line.includes('──') || line.includes('==') || line.includes('Navigate') || line.includes('Complete')) continue;
+          if (line.indexOf('? ') === 0) line = line.substring(2).trim();
+          titleParts.unshift(line);
+          linesCollected++;
+        }
+
+        if (tail) {
+          var cleanTail = tail;
+          if (cleanTail.indexOf('? ') === 0) cleanTail = cleanTail.substring(2).trim();
+          titleParts.push(cleanTail);
+        }
+
+        var title = titleParts.length > 0 ? titleParts.join(' ') : 'Select an option';
+        return {
+          type: type,
+          title: title,
+          options: items.map(function(it) { return { value: it.key, text: it.text }; })
+        };
+      }
+
+      function jsDetectYesNo(content) {
+        var tail = content.length > 500 ? content.substring(content.length - 500) : content;
+        var yesNoRegex = /(.+?)\s*[\(\[]\s*([Yy](?:es)?)\s*[/|]\s*([Nn](?:o)?)\s*[\)\]]/i;
+        var noYesRegex = /(.+?)\s*[\(\[]\s*([Nn](?:o)?)\s*[/|]\s*([Yy](?:es)?)\s*[\)\]]/i;
+
+        var match = tail.match(yesNoRegex);
+        if (match) {
+          var question = retrieveFullQuestion(content, tail, tail.indexOf(match[0]), match[1]);
+          return buildYesNoPrompt(question, match[2], match[3]);
+        }
+
+        match = tail.match(noYesRegex);
+        if (match) {
+          var question = retrieveFullQuestion(content, tail, tail.indexOf(match[0]), match[1]);
+          return buildYesNoPrompt(question, match[3], match[2]);
+        }
+
+        return null;
+      }
+
+      function buildYesNoPrompt(question, yesToken, noToken) {
+        var q = question.trim();
+        if (q.indexOf('? ') === 0) q = q.substring(2).trim();
+        if (!q) q = 'Confirm?';
+
+        return {
+          type: 'yesno',
+          title: q,
+          options: [
+            { value: yesToken.toLowerCase(), text: 'Yes' },
+            { value: noToken.toLowerCase(), text: 'No' }
+          ]
+        };
+      }
+
+      function retrieveFullQuestion(content, tail, matchIndexInTail, matchedQuestion) {
+        var question = matchedQuestion.trim();
+        if (question.indexOf('? ') === 0) question = question.substring(2).trim();
+
+        var matchIndexInContent = content.length - tail.length + matchIndexInTail;
+        if (matchIndexInContent <= 0) return question;
+
+        var precedingText = content.substring(0, matchIndexInContent);
+        var lines = precedingText.split('\n')
+          .map(function(l) { return l.trim(); })
+          .filter(function(l) { return l.length > 0; });
+
+        if (lines.length === 0) return question;
+
+        var questionLines = [];
+        var added = 0;
+        for (var i = lines.length - 1; i >= 0 && added < 3; i--) {
+          var line = lines[i];
+          if (line.includes('──') || line.includes('==') || line.includes('Navigate') || line.includes('Complete')) continue;
+          questionLines.unshift(line);
+          added++;
+        }
+
+        if (questionLines.length > 0) {
+          if (question && question.toLowerCase() !== 'confirm' && question.toLowerCase() !== 'select') {
+            if (questionLines.indexOf(question) === -1) {
+              questionLines.push(question);
+            }
+          }
+          return questionLines.join(' ');
+        }
+
+        return question;
+      }
+
+      function jsDetectTuiSelector(content) {
+        var lines = content.split('\n');
+        var tuiSelectedRegex = /^\s*[>❯›▶→*]\s*(.+)$/;
+        var tuiUnselectedRegex = /^\s+(\S.+)$/;
+
+        var selectedLineIdx = -1;
+        for (var i = lines.length - 1; i >= 0; i--) {
+          var line = lines[i].trimEnd();
+          if (tuiSelectedRegex.test(line)) {
+            selectedLineIdx = i;
+            break;
+          }
+        }
+
+        if (selectedLineIdx < 0) return null;
+
+        var items = [];
+        
+        var selMatch = lines[selectedLineIdx].trimEnd().match(tuiSelectedRegex);
+        items.push({
+          lineIdx: selectedLineIdx,
+          text: cleanTuiText(selMatch[1]),
+          isSelected: true
+        });
+
+        for (var i = selectedLineIdx - 1; i >= 0; i--) {
+          var line = lines[i].trimEnd();
+          if (!line) break;
+          
+          var um = line.match(tuiUnselectedRegex);
+          if (um) {
+            items.unshift({ lineIdx: i, text: cleanTuiText(um[1]), isSelected: false });
+          } else {
+            var sm = line.match(tuiSelectedRegex);
+            if (sm) {
+              items.unshift({ lineIdx: i, text: cleanTuiText(sm[1]), isSelected: false });
+            } else {
+              break;
+            }
+          }
+        }
+
+        for (var i = selectedLineIdx + 1; i < lines.length; i++) {
+          var line = lines[i].trimEnd();
+          if (!line) break;
+
+          var um = line.match(tuiUnselectedRegex);
+          if (um) {
+            items.push({ lineIdx: i, text: cleanTuiText(um[1]), isSelected: false });
+          } else {
+            var sm = line.match(tuiSelectedRegex);
+            if (sm) {
+              items.push({ lineIdx: i, text: cleanTuiText(sm[1]), isSelected: false });
+            } else {
+              break;
+            }
+          }
+        }
+
+        if (items.length < 2) return null;
+
+        var currentIndex = items.findIndex(function(it) { return it.isSelected; });
+        
+        var firstLine = items[0].lineIdx;
+        var titleParts = [];
+        var linesCollected = 0;
+        for (var i = firstLine - 1; i >= 0 && linesCollected < 4; i--) {
+          var line = lines[i].trim();
+          if (!line) continue;
+          if (line.includes('──') || line.includes('==') || line.includes('Navigate') || line.includes('Complete') || line.includes('Keyboard') || line.includes('shortcuts')) continue;
+          if (line.indexOf('? ') === 0) line = line.substring(2).trim();
+          titleParts.unshift(line);
+          linesCollected++;
+        }
+
+        var title = titleParts.length > 0 ? titleParts.join(' ') : 'Select an option';
+
+        return {
+          type: 'tui',
+          title: title,
+          currentIndex: currentIndex >= 0 ? currentIndex : 0,
+          options: items.map(function(it, idx) { return { value: idx.toString(), text: it.text }; })
+        };
+      }
+
+      function cleanTuiText(raw) {
+        var text = raw.trim();
+        var parenStart = text.lastIndexOf('(');
+        if (parenStart > 0 && text.endsWith(')')) {
+          var annotation = text.substring(parenStart).toLowerCase();
+          if (annotation.includes('current') || annotation.includes('active') || annotation.includes('default') || annotation.includes('selected')) {
+            text = text.substring(0, parenStart).trimEnd();
+          }
+        }
+        return text;
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "ShellPath": "powershell.exe",
+  "ShellArgs": "-NoLogo -NoProfile",
+  "FontFamily": "Consolas",
+  "FontSize": 18,
+  "TextColor": "#CCCCCC",
+  "BackgroundColor": "#1E1E1E",
+  "AI": {
+    "ApiKey": ""
+  }
+}

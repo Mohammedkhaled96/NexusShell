@@ -1,4 +1,34 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+publish/
+artifacts/
+*.nupkg
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.rsuser
+*.userprefs
+*.sln.docstates
+
+# Test results
+[Tt]est[Rr]esult*/
+*.trx
+coverage*.xml
+
 # Installers are distributed via GitHub Releases
 *.exe
 *.msi
 *.zip
+
+# Local secrets & runtime data (settings with real API keys live in %AppData%)
+.env
+*.local.json
+*.pfx
+*.snk
+logs/

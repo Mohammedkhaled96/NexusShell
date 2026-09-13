@@ -1,0 +1,50 @@
+<Window x:Class="NexusShell.App.Views.UpdateAvailableWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:viewModels="clr-namespace:NexusShell.App.ViewModels"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance Type=viewModels:UpdateAvailableViewModel, IsDesignTimeCreatable=False}"
+        Title="Update Available" Height="450" Width="600"
+        Background="#1E1E1E"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="ToolWindow"
+        AutomationProperties.Name="Update Available Window">
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Margin="0,0,0,15">
+            <TextBox x:Name="UpdateInfoTextBox"
+                     Text="{Binding UpdateInfoText}"
+                     IsReadOnly="True"
+                     TextWrapping="Wrap"
+                     Foreground="White"
+                     Background="#2D2D2D"
+                     BorderThickness="0"
+                     FontSize="14"
+                     AutomationProperties.Name="Update Information"
+                     VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Auto" />
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="1" Orientation="Vertical" HorizontalAlignment="Right">
+            <CheckBox Content="Do not show again for this update" 
+                      IsChecked="{Binding DoNotShowAgain}" 
+                      Foreground="White" 
+                      Margin="0,0,0,10" 
+                      HorizontalAlignment="Right"
+                      AutomationProperties.Name="Do Not Show Again Checkbox"
+                      AutomationProperties.HelpText="If checked, you will not be notified about this specific update again until you check manually."/>
+            
+            <StackPanel Orientation="Horizontal">
+                <Button x:Name="UpdateButton" Content="Update" Command="{Binding UpdateCommand}" Width="100" IsDefault="True" Margin="0,0,10,0" AutomationProperties.Name="Update Now Button" />
+                <Button Content="Remind Later" Command="{Binding RemindLaterCommand}" Width="100" Margin="0,0,10,0" AutomationProperties.Name="Remind Me Later Button" />
+                <Button Content="Cancel" Command="{Binding CancelCommand}" Width="80" IsCancel="True" AutomationProperties.Name="Cancel Button" />
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</Window>

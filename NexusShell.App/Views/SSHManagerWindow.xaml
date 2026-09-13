@@ -1,0 +1,144 @@
+<Window x:Class="NexusShell.App.Views.SSHManagerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:helpers="clr-namespace:NexusShell.App.Helpers"
+        Title="SSH Connection Manager" Height="470" Width="660"
+        Background="#1E1E1E" Foreground="White"
+        WindowStartupLocation="CenterOwner"
+        AutomationProperties.Name="SSH Connection Manager"
+        AutomationProperties.HelpText="Manage saved SSH connections and connect to remote servers from the terminal.">
+    <Window.Resources>
+        <helpers:NullToBoolConverter x:Key="NullToBoolConverter" />
+        <Style x:Key="DarkBtn" TargetType="Button">
+            <Setter Property="Background" Value="#2D2D2D"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#555555"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#3E3E3E"/>
+                </Trigger>
+                <Trigger Property="IsFocused" Value="True">
+                    <Setter Property="BorderBrush" Value="#007ACC"/>
+                    <Setter Property="BorderThickness" Value="2"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.4"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="AccentBtn" TargetType="Button" BasedOn="{StaticResource DarkBtn}">
+            <Setter Property="Background" Value="#007ACC"/>
+            <Setter Property="BorderBrush" Value="#007ACC"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#005F99"/>
+                </Trigger>
+                <Trigger Property="IsFocused" Value="True">
+                    <Setter Property="BorderBrush" Value="#FFFFFF"/>
+                    <Setter Property="BorderThickness" Value="2"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="200"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Left Panel: Connections List + Add/Delete -->
+        <DockPanel Grid.Column="0" Margin="0,0,12,0">
+            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
+                        HorizontalAlignment="Center" Margin="0,8,0,0">
+                <Button Content="_Add" Command="{Binding AddConnectionCommand}"
+                        Style="{StaticResource DarkBtn}" Width="70" Margin="0,0,6,0" TabIndex="2"
+                        AutomationProperties.Name="Add New Connection"
+                        AutomationProperties.HelpText="Create a new SSH connection entry"/>
+                <Button Content="_Delete" Command="{Binding DeleteConnectionCommand}"
+                        Style="{StaticResource DarkBtn}" Width="70" TabIndex="3"
+                        AutomationProperties.Name="Delete Selected Connection"
+                        AutomationProperties.HelpText="Remove the currently selected SSH connection"/>
+            </StackPanel>
+            <ListBox ItemsSource="{Binding Connections}" SelectedItem="{Binding SelectedConnection}"
+                     DisplayMemberPath="Name"
+                     Background="#252526" Foreground="White" BorderBrush="#444444"
+                     TabIndex="1"
+                     AutomationProperties.Name="SSH Connections List"
+                     AutomationProperties.HelpText="Saved SSH connections. Select one to edit its details or connect.">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Padding" Value="6,4"/>
+                        <Setter Property="AutomationProperties.Name" Value="{Binding Name}"/>
+                        <Setter Property="AutomationProperties.HelpText">
+                            <Setter.Value>
+                                <MultiBinding StringFormat="{}{0}@{1} on port {2}">
+                                    <Binding Path="User"/>
+                                    <Binding Path="Host"/>
+                                    <Binding Path="Port"/>
+                                </MultiBinding>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+            </ListBox>
+        </DockPanel>
+
+        <!-- Right Panel: Edit Form -->
+        <StackPanel Grid.Column="1"
+                    IsEnabled="{Binding SelectedConnection, Converter={StaticResource NullToBoolConverter}}">
+
+            <TextBlock x:Name="NameLabel" Text="Connection Name:" Foreground="#CCCCCC" Margin="0,0,0,4"/>
+            <TextBox Text="{Binding SelectedConnection.Name, UpdateSourceTrigger=PropertyChanged}"
+                     Margin="0,0,0,12" Height="28" Padding="6,4"
+                     Background="#2D2D2D" Foreground="White" CaretBrush="White"
+                     BorderBrush="#555555" BorderThickness="1" TabIndex="4"
+                     AutomationProperties.LabeledBy="{Binding ElementName=NameLabel}"
+                     AutomationProperties.HelpText="Friendly label for this connection, for example: My Web Server"/>
+
+            <TextBlock x:Name="HostLabel" Text="Host / IP:" Foreground="#CCCCCC" Margin="0,0,0,4"/>
+            <TextBox Text="{Binding SelectedConnection.Host, UpdateSourceTrigger=PropertyChanged}"
+                     Margin="0,0,0,12" Height="28" Padding="6,4"
+                     Background="#2D2D2D" Foreground="White" CaretBrush="White"
+                     BorderBrush="#555555" BorderThickness="1" TabIndex="5"
+                     AutomationProperties.LabeledBy="{Binding ElementName=HostLabel}"
+                     AutomationProperties.HelpText="Server hostname or IP address, for example: 192.168.1.100 or example.com"/>
+
+            <TextBlock x:Name="PortLabel" Text="Port:" Foreground="#CCCCCC" Margin="0,0,0,4"/>
+            <TextBox Text="{Binding SelectedConnection.Port, UpdateSourceTrigger=PropertyChanged}"
+                     Margin="0,0,0,12" Height="28" Padding="6,4"
+                     Background="#2D2D2D" Foreground="White" CaretBrush="White"
+                     BorderBrush="#555555" BorderThickness="1" TabIndex="6"
+                     AutomationProperties.LabeledBy="{Binding ElementName=PortLabel}"
+                     AutomationProperties.HelpText="SSH port number. Default is 22."/>
+
+            <TextBlock x:Name="UserLabel" Text="User:" Foreground="#CCCCCC" Margin="0,0,0,4"/>
+            <TextBox Text="{Binding SelectedConnection.User, UpdateSourceTrigger=PropertyChanged}"
+                     Margin="0,0,0,16" Height="28" Padding="6,4"
+                     Background="#2D2D2D" Foreground="White" CaretBrush="White"
+                     BorderBrush="#555555" BorderThickness="1" TabIndex="7"
+                     AutomationProperties.LabeledBy="{Binding ElementName=UserLabel}"
+                     AutomationProperties.HelpText="SSH username for this server, for example: admin or ubuntu"/>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Button Grid.Column="0" Content="_Save" Command="{Binding SaveCommand}"
+                        Style="{StaticResource DarkBtn}"
+                        Height="35" Margin="0,0,6,0" TabIndex="8"
+                        AutomationProperties.Name="Save Connection"
+                        AutomationProperties.HelpText="Save this SSH connection details to disk"/>
+                <Button Grid.Column="1" Content="_Connect Now" Command="{Binding ConnectCommand}"
+                        Style="{StaticResource AccentBtn}"
+                        Height="35" FontWeight="Bold" TabIndex="9"
+                        AutomationProperties.Name="Connect Now"
+                        AutomationProperties.HelpText="Open an SSH session to this server in the active terminal tab"/>
+            </Grid>
+        </StackPanel>
+    </Grid>
+</Window>

@@ -6,8 +6,14 @@
 
 *A smarter way to work with PowerShell, CMD, and WSL — all in one beautiful, accessible interface.*
 
-[![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?style=flat-square&logo=windows)](https://github.com/Mohammedkhaled96/NexusShell)
-[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+[![CI](https://github.com/Mohammedkhaled96/NexusShell/actions/workflows/ci.yml/badge.svg)](https://github.com/Mohammedkhaled96/NexusShell/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/Mohammedkhaled96/NexusShell/actions/workflows/codeql.yml/badge.svg)](https://github.com/Mohammedkhaled96/NexusShell/actions/workflows/codeql.yml)
+[![Security](https://github.com/Mohammedkhaled96/NexusShell/actions/workflows/security.yml/badge.svg)](https://github.com/Mohammedkhaled96/NexusShell/actions/workflows/security.yml)
+[![Latest release](https://img.shields.io/github/v/release/Mohammedkhaled96/NexusShell?style=flat-square)](https://github.com/Mohammedkhaled96/NexusShell/releases/latest)
+
+[![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6?style=flat-square&logo=windows)](https://github.com/Mohammedkhaled96/NexusShell)
+[![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
+[![License](https://img.shields.io/badge/License-BSL--1.0-green?style=flat-square)](LICENSE)
 [![GitHub Issues](https://img.shields.io/github/issues/Mohammedkhaled96/NexusShell?style=flat-square)](https://github.com/Mohammedkhaled96/NexusShell/issues)
 
 </div>
@@ -83,6 +89,50 @@ winget install MF.NexusShell
 | `Arrow Keys` | Navigate options (Interactive Dialog) |
 | `Space / Enter` | Select option (Interactive Dialog) |
 | `Escape` | Dismiss dialog (Interactive Dialog) |
+
+---
+
+## 🛠️ Build from Source
+
+**Requirements:** Windows 10 1903+ (x64), [.NET 10 SDK](https://dotnet.microsoft.com/download), [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
+
+```powershell
+git clone https://github.com/Mohammedkhaled96/NexusShell.git
+cd NexusShell
+dotnet build NexusShell.sln -c Release
+# app.manifest requests elevation; for development run through the .NET host:
+dotnet NexusShell.App\bin\Release\net10.0-windows10.0.19041.0\NexusShell.App.dll
+```
+
+### Project layout
+
+| Path | Purpose |
+|---|---|
+| `NexusShell.App/App.xaml.cs` | Composition root — Generic Host, DI registration, Serilog |
+| `NexusShell.App/Services`, `Interfaces` | ConPTY terminal sessions, AI (Groq), config, sounds, notifications |
+| `NexusShell.App/ViewModels`, `Views` | MVVM windows and view models |
+| `NexusShell.App/WebTerminal` | WebView2 renderer: hidden xterm.js parser → accessible HTML blocks |
+| `packaging/winget` | Windows Package Manager manifests |
+| `AGENT.md` | Architecture & contribution guide for humans and AI coding agents |
+
+### CI/CD
+
+| Workflow | Runs on | What it does |
+|---|---|---|
+| **CI** | push, pull request | Restore, build and test on `windows-latest` |
+| **CodeQL** | push, pull request, weekly | Security analysis of C# and JavaScript |
+| **Security** | push, pull request | TruffleHog secret scan, vulnerable NuGet check, dependency review |
+| **Release** | `v*` tag | Self-contained win-x64 build, zip + SHA256 attached to the GitHub release |
+
+Dependabot keeps NuGet packages and GitHub Actions up to date.
+
+---
+
+## 🔒 Security
+
+- Your AI API key is **encrypted with Windows DPAPI** in `%AppData%\NexusShell\settings.json` — it is never stored in plain text or committed to the repository.
+- No telemetry; terminal input and secrets are never logged.
+- Report vulnerabilities privately — see [SECURITY.md](SECURITY.md).
 
 ---
 

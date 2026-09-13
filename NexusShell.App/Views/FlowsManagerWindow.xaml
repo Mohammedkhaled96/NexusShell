@@ -1,0 +1,125 @@
+<Window x:Class="NexusShell.App.Views.FlowsManagerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:NexusShell.App.ViewModels"
+        Title="Flows — Install / Uninstall CLIs"
+        Height="580" Width="920"
+        WindowStartupLocation="CenterOwner"
+        Background="#1E1E1E"
+        FontFamily="Segoe UI" FontSize="13"
+        d:DataContext="{d:DesignInstance Type=vm:FlowsManagerViewModel}"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="d">
+
+    <Window.Resources>
+        <CollectionViewSource x:Key="FlowsView" Source="{Binding Flows}">
+            <CollectionViewSource.GroupDescriptions>
+                <PropertyGroupDescription PropertyName="Tool"/>
+            </CollectionViewSource.GroupDescriptions>
+        </CollectionViewSource>
+
+        <Style x:Key="ToolButton" TargetType="Button">
+            <Setter Property="Background" Value="#2D2D30"/>
+            <Setter Property="Foreground" Value="#EFEFEF"/>
+            <Setter Property="BorderBrush" Value="#3A3A3C"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12,5"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="10">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="330"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Off-screen assertive live region: announces progress to screen readers. -->
+        <TextBlock x:Name="LiveRegion" Grid.Column="0"
+                   Text="{Binding LiveStatus}"
+                   AutomationProperties.LiveSetting="Assertive"
+                   AutomationProperties.Name="Flow status"
+                   Width="0" Height="0" Opacity="0"/>
+
+        <!-- Left: flows list + library actions -->
+        <DockPanel Grid.Column="0" Margin="0,0,10,0">
+            <TextBlock DockPanel.Dock="Top" Text="Flows" Foreground="White" FontWeight="Bold" FontSize="16" Margin="0,0,0,6"
+                       AutomationProperties.HeadingLevel="Level1"/>
+
+            <Border DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                <WrapPanel>
+                    <Button Content="Import…"  Style="{StaticResource ToolButton}" Margin="0,0,6,6" Command="{Binding ImportCommand}" AutomationProperties.Name="Import flows from file"/>
+                    <Button Content="Export…"  Style="{StaticResource ToolButton}" Margin="0,0,6,6" Command="{Binding ExportCommand}" AutomationProperties.Name="Export flows to file"/>
+                    <Button Content="Delete"   Style="{StaticResource ToolButton}" Margin="0,0,6,6" Command="{Binding DeleteCommand}" AutomationProperties.Name="Delete selected user flow"/>
+                    <Button Content="Refresh"  Style="{StaticResource ToolButton}" Margin="0,0,0,6" Command="{Binding RefreshCommand}" AutomationProperties.Name="Reload flows"/>
+                </WrapPanel>
+            </Border>
+
+            <ListBox x:Name="FlowsList"
+                     ItemsSource="{Binding Source={StaticResource FlowsView}}"
+                     SelectedItem="{Binding SelectedFlow}"
+                     Background="#252526" Foreground="#CCCCCC" BorderBrush="#3A3A3C" BorderThickness="1"
+                     MouseDoubleClick="FlowsList_MouseDoubleClick"
+                     KeyDown="FlowsList_KeyDown"
+                     AutomationProperties.Name="Flows"
+                     AutomationProperties.HelpText="Select a flow and press Enter, or double-click, to run it.">
+                <ListBox.GroupStyle>
+                    <GroupStyle>
+                        <GroupStyle.HeaderTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Name}" Foreground="#0A84FF" FontWeight="Bold" Margin="4,10,0,2"/>
+                            </DataTemplate>
+                        </GroupStyle.HeaderTemplate>
+                    </GroupStyle>
+                </ListBox.GroupStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Margin="4,3" AutomationProperties.Name="{Binding DisplayName}">
+                            <TextBlock Text="{Binding DisplayName}" Foreground="White" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding KindLabel}" Foreground="#8E8E93" FontSize="11"/>
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </DockPanel>
+
+        <!-- Right: details + progress -->
+        <DockPanel Grid.Column="1">
+            <StackPanel DockPanel.Dock="Top">
+                <TextBlock Text="{Binding SelectedFlow.DisplayName, FallbackValue='Select a flow'}"
+                           Foreground="White" FontWeight="Bold" FontSize="16" TextWrapping="Wrap"
+                           AutomationProperties.HeadingLevel="Level2"/>
+                <TextBlock Text="{Binding SelectedFlow.Description}" Foreground="#8E8E93" TextWrapping="Wrap" Margin="0,3,0,10"/>
+
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                    <Button Content="▶  Run" Command="{Binding RunCommand}"
+                            Background="#0A84FF" Foreground="White" BorderThickness="0" Padding="16,6" Margin="0,0,8,0" Cursor="Hand"
+                            AutomationProperties.Name="Run selected flow"/>
+                    <Button Content="Preview" Command="{Binding PreviewCommand}" Style="{StaticResource ToolButton}" Padding="14,6"
+                            AutomationProperties.Name="Preview commands"/>
+                    <Button Content="Cancel" Command="{Binding CancelCommand}" Style="{StaticResource ToolButton}" Padding="14,6"
+                            AutomationProperties.Name="Cancel running flow"/>
+                </StackPanel>
+            </StackPanel>
+
+            <Border Background="#0C0C0C" BorderBrush="#3A3A3C" BorderThickness="1" CornerRadius="2">
+                <ListBox x:Name="LogList"
+                         ItemsSource="{Binding Log}"
+                         Background="Transparent" Foreground="#D4D4D4" BorderThickness="0"
+                         FontFamily="Cascadia Code, Consolas, Courier New" FontSize="12"
+                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         AutomationProperties.Name="Flow progress log"
+                         AutomationProperties.LiveSetting="Polite">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Padding" Value="2,0"/>
+                            <Setter Property="Background" Value="Transparent"/>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                </ListBox>
+            </Border>
+        </DockPanel>
+    </Grid>
+</Window>

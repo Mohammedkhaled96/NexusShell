@@ -1,0 +1,49 @@
+<Window x:Class="NexusShell.App.Views.HelpWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:viewModels="clr-namespace:NexusShell.App.ViewModels"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance Type=viewModels:HelpViewModel, IsDesignTimeCreatable=False}"
+        Title="NexusShell Help" Height="500" Width="700"
+        Background="#1E1E1E"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="ToolWindow"
+        ResizeMode="CanResize"
+        KeyUp="Window_KeyUp"
+        AutomationProperties.Name="Help Window">
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBox x:Name="HelpInfoTextBox"
+                 Grid.Row="0"
+                 Text="{Binding HelpText, Mode=OneWay}"
+                 IsReadOnly="True"
+                 IsReadOnlyCaretVisible="True"
+                 TextWrapping="Wrap"
+                 AcceptsReturn="True"
+                 Foreground="White"
+                 Background="#2D2D2D"
+                 BorderThickness="0"
+                 Padding="10"
+                 FontSize="14"
+                 FontFamily="Consolas"
+                 AutomationProperties.Name="Help Content"
+                 AutomationProperties.HelpText="Read this text to understand how to use the application."
+                 VerticalScrollBarVisibility="Auto"
+                 HorizontalScrollBarVisibility="Auto" />
+
+        <Button Grid.Row="1" 
+                Content="Close" 
+                IsCancel="True" 
+                Click="CloseButton_Click"
+                Width="100"
+                HorizontalAlignment="Right"
+                Margin="0,15,0,0"
+                AutomationProperties.Name="Close Help Window" />
+    </Grid>
+</Window>

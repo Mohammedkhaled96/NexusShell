@@ -1,0 +1,98 @@
+<Window x:Class="NexusShell.App.Views.AliasManagerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:helpers="clr-namespace:NexusShell.App.Helpers"
+        Title="Command Alias Manager" Height="420" Width="620"
+        Background="#1E1E1E" Foreground="White"
+        WindowStartupLocation="CenterOwner"
+        AutomationProperties.Name="Command Alias Manager"
+        AutomationProperties.HelpText="Create and manage command aliases. Type a short trigger word and it expands to the full command when you press Enter.">
+    <Window.Resources>
+        <helpers:NullToBoolConverter x:Key="NullToBoolConverter" />
+        <Style x:Key="DarkBtn" TargetType="Button">
+            <Setter Property="Background" Value="#2D2D2D"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#555555"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#3E3E3E"/>
+                </Trigger>
+                <Trigger Property="IsFocused" Value="True">
+                    <Setter Property="BorderBrush" Value="#007ACC"/>
+                    <Setter Property="BorderThickness" Value="2"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.4"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="200"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Left Panel: List + Add/Delete -->
+        <DockPanel Grid.Column="0" Margin="0,0,12,0">
+            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
+                        HorizontalAlignment="Center" Margin="0,8,0,0">
+                <Button Content="_Add" Command="{Binding AddAliasCommand}"
+                        Style="{StaticResource DarkBtn}" Width="70" Margin="0,0,6,0" TabIndex="2"
+                        AutomationProperties.Name="Add New Alias"
+                        AutomationProperties.HelpText="Create a new blank alias entry"/>
+                <Button Content="_Delete" Command="{Binding DeleteAliasCommand}"
+                        Style="{StaticResource DarkBtn}" Width="70" TabIndex="3"
+                        AutomationProperties.Name="Delete Selected Alias"
+                        AutomationProperties.HelpText="Remove the currently selected alias"/>
+            </StackPanel>
+            <ListBox ItemsSource="{Binding Aliases}" SelectedItem="{Binding SelectedAlias}"
+                     DisplayMemberPath="Trigger"
+                     Background="#252526" Foreground="White" BorderBrush="#444444"
+                     TabIndex="1"
+                     AutomationProperties.Name="Aliases List"
+                     AutomationProperties.HelpText="List of saved aliases. Select one to edit. Each item shows the trigger word.">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Padding" Value="6,4"/>
+                        <Setter Property="AutomationProperties.Name" Value="{Binding Trigger}"/>
+                        <Setter Property="AutomationProperties.HelpText" Value="{Binding Command}"/>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+            </ListBox>
+        </DockPanel>
+
+        <!-- Right Panel: Edit Form -->
+        <StackPanel Grid.Column="1"
+                    IsEnabled="{Binding SelectedAlias, Converter={StaticResource NullToBoolConverter}}">
+
+            <TextBlock x:Name="TriggerLabel" Text="Trigger (short command you type):"
+                       Foreground="#CCCCCC" Margin="0,0,0,4"/>
+            <TextBox Text="{Binding SelectedAlias.Trigger, UpdateSourceTrigger=PropertyChanged}"
+                     Margin="0,0,0,12" Height="28" Padding="6,4"
+                     Background="#2D2D2D" Foreground="White" CaretBrush="White"
+                     BorderBrush="#555555" BorderThickness="1" TabIndex="4"
+                     AutomationProperties.LabeledBy="{Binding ElementName=TriggerLabel}"
+                     AutomationProperties.HelpText="Short word you type in the terminal; it will be replaced by the full command below"/>
+
+            <TextBlock x:Name="CmdLabel" Text="Command (what it expands to):"
+                       Foreground="#CCCCCC" Margin="0,0,0,4"/>
+            <TextBox Text="{Binding SelectedAlias.Command, UpdateSourceTrigger=PropertyChanged}"
+                     Height="110" TextWrapping="Wrap" AcceptsReturn="True" Padding="6,4"
+                     Background="#2D2D2D" Foreground="White" CaretBrush="White"
+                     BorderBrush="#555555" BorderThickness="1" TabIndex="5"
+                     AutomationProperties.LabeledBy="{Binding ElementName=CmdLabel}"
+                     AutomationProperties.HelpText="Full shell command that this alias will execute when triggered"/>
+
+            <Button Content="_Save All" Command="{Binding SaveCommand}"
+                    Style="{StaticResource DarkBtn}"
+                    Margin="0,16,0,0" Height="32" TabIndex="6"
+                    AutomationProperties.Name="Save All Aliases"
+                    AutomationProperties.HelpText="Save all alias changes to disk"/>
+        </StackPanel>
+    </Grid>
+</Window>

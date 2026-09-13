@@ -1,0 +1,104 @@
+<Window x:Class="NexusShell.App.Views.SnippetManagerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:helpers="clr-namespace:NexusShell.App.Helpers"
+        Title="Snippet Manager" Height="460" Width="640"
+        Background="#1E1E1E" Foreground="White"
+        WindowStartupLocation="CenterOwner"
+        AutomationProperties.Name="Snippet Manager"
+        AutomationProperties.HelpText="Store and manage reusable command snippets that you can paste into the terminal.">
+    <Window.Resources>
+        <helpers:NullToBoolConverter x:Key="NullToBoolConverter" />
+        <Style x:Key="DarkBtn" TargetType="Button">
+            <Setter Property="Background" Value="#2D2D2D"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#555555"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#3E3E3E"/>
+                </Trigger>
+                <Trigger Property="IsFocused" Value="True">
+                    <Setter Property="BorderBrush" Value="#007ACC"/>
+                    <Setter Property="BorderThickness" Value="2"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.4"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="200"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Left Panel: List + Add/Delete -->
+        <DockPanel Grid.Column="0" Margin="0,0,12,0">
+            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
+                        HorizontalAlignment="Center" Margin="0,8,0,0">
+                <Button Content="_Add" Command="{Binding AddSnippetCommand}"
+                        Style="{StaticResource DarkBtn}" Width="70" Margin="0,0,6,0" TabIndex="2"
+                        AutomationProperties.Name="Add New Snippet"
+                        AutomationProperties.HelpText="Create a new blank snippet"/>
+                <Button Content="_Delete" Command="{Binding DeleteSnippetCommand}"
+                        Style="{StaticResource DarkBtn}" Width="70" TabIndex="3"
+                        AutomationProperties.Name="Delete Selected Snippet"
+                        AutomationProperties.HelpText="Remove the currently selected snippet"/>
+            </StackPanel>
+            <ListBox ItemsSource="{Binding Snippets}" SelectedItem="{Binding SelectedSnippet}"
+                     DisplayMemberPath="Name"
+                     Background="#252526" Foreground="White" BorderBrush="#444444"
+                     TabIndex="1"
+                     AutomationProperties.Name="Snippets List"
+                     AutomationProperties.HelpText="List of saved snippets. Select one to view or edit its command.">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Padding" Value="6,4"/>
+                        <Setter Property="AutomationProperties.Name" Value="{Binding Name}"/>
+                        <Setter Property="AutomationProperties.HelpText" Value="{Binding Command}"/>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+            </ListBox>
+        </DockPanel>
+
+        <!-- Right Panel: Edit Form -->
+        <StackPanel Grid.Column="1"
+                    IsEnabled="{Binding SelectedSnippet, Converter={StaticResource NullToBoolConverter}}">
+
+            <TextBlock x:Name="NameLabel" Text="Name:" Foreground="#CCCCCC" Margin="0,0,0,4"/>
+            <TextBox Text="{Binding SelectedSnippet.Name, UpdateSourceTrigger=PropertyChanged}"
+                     Margin="0,0,0,12" Height="28" Padding="6,4"
+                     Background="#2D2D2D" Foreground="White" CaretBrush="White"
+                     BorderBrush="#555555" BorderThickness="1" TabIndex="4"
+                     AutomationProperties.LabeledBy="{Binding ElementName=NameLabel}"
+                     AutomationProperties.HelpText="Enter a short, descriptive name for this snippet"/>
+
+            <TextBlock x:Name="CatLabel" Text="Category:" Foreground="#CCCCCC" Margin="0,0,0,4"/>
+            <TextBox Text="{Binding SelectedSnippet.Category, UpdateSourceTrigger=PropertyChanged}"
+                     Margin="0,0,0,12" Height="28" Padding="6,4"
+                     Background="#2D2D2D" Foreground="White" CaretBrush="White"
+                     BorderBrush="#555555" BorderThickness="1" TabIndex="5"
+                     AutomationProperties.LabeledBy="{Binding ElementName=CatLabel}"
+                     AutomationProperties.HelpText="Group snippets by category, for example: Network, Files, Git, System"/>
+
+            <TextBlock x:Name="CmdLabel" Text="Command:" Foreground="#CCCCCC" Margin="0,0,0,4"/>
+            <TextBox Text="{Binding SelectedSnippet.Command, UpdateSourceTrigger=PropertyChanged}"
+                     Height="160" TextWrapping="Wrap" AcceptsReturn="True" Padding="6,4"
+                     Background="#2D2D2D" Foreground="White" CaretBrush="White"
+                     BorderBrush="#555555" BorderThickness="1" TabIndex="6"
+                     AutomationProperties.LabeledBy="{Binding ElementName=CmdLabel}"
+                     AutomationProperties.HelpText="Enter the full shell command for this snippet. Can be multi-line."/>
+
+            <Button Content="_Save All Changes" Command="{Binding SaveCommand}"
+                    Style="{StaticResource DarkBtn}"
+                    Margin="0,16,0,0" Height="32" TabIndex="7"
+                    AutomationProperties.Name="Save All Snippets"
+                    AutomationProperties.HelpText="Save all snippet changes to disk"/>
+        </StackPanel>
+    </Grid>
+</Window>

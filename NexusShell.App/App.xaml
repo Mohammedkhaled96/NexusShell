@@ -1,0 +1,16 @@
+<Application x:Class="NexusShell.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:NexusShell.App"
+             xmlns:helpers="clr-namespace:NexusShell.App.Helpers">
+    <Application.Resources>
+        <helpers:StatusColorConverter x:Key="StatusColorConverter" />
+        <helpers:EnumToCollectionConverter x:Key="EnumToCollectionConverter" />
+        <helpers:NullToBoolConverter x:Key="NullToBoolConverter" />
+        <helpers:EqualValueToVisibilityConverter x:Key="EqualValueToVisibilityConverter" />
+        <helpers:DictionaryToTextConverter x:Key="DictionaryToTextConverter" />
+        <helpers:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <helpers:MethodColorConverter x:Key="MethodColorConverter" />
+        <helpers:NonEmptyStringToVisibilityConverter x:Key="NonEmptyStringToVisConverter" />
+    </Application.Resources>
+</Application>

@@ -1,0 +1,48 @@
+<Window x:Class="NexusShell.App.Views.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:viewModels="clr-namespace:NexusShell.App.ViewModels"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance Type=viewModels:AboutViewModel, IsDesignTimeCreatable=False}"
+        Title="About NexusShell" Height="350" Width="500"
+        Background="#1E1E1E"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="ToolWindow"
+        ResizeMode="NoResize"
+        KeyUp="Window_KeyUp"
+        AutomationProperties.Name="About Window">
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBox x:Name="AboutInfoTextBox"
+                 Grid.Row="0"
+                 Text="{Binding AboutText, Mode=OneWay}"
+                 IsReadOnly="True"
+                 IsReadOnlyCaretVisible="True"
+                 TextWrapping="Wrap"
+                 AcceptsReturn="True"
+                 Foreground="White"
+                 Background="#2D2D2D"
+                 BorderThickness="0"
+                 Padding="10"
+                 FontSize="14"
+                 FontFamily="Consolas"
+                 AutomationProperties.Name="Application Information"
+                 AutomationProperties.HelpText="Contains application version and copyright information."
+                 VerticalScrollBarVisibility="Auto" />
+
+        <Button Grid.Row="1" 
+                Content="Close" 
+                IsCancel="True" 
+                Click="CloseButton_Click"
+                Width="100" 
+                HorizontalAlignment="Right" 
+                Margin="0,15,0,0"
+                AutomationProperties.Name="Close About Window"/>
+    </Grid>
+</Window>
