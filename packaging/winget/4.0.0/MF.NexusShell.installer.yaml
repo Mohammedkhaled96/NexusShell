@@ -5,10 +5,8 @@ MinimumOSVersion: 10.0.0.0
 InstallerType: exe
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/Mohammedkhaled96/NexusShell/releases/download/V4.0.0/NexusShell_Silent_Setup.exe
-    # TODO: replace with the real SHA256 of the V4.0.0 installer
-    # (PowerShell:  Get-FileHash .\NexusShell_Silent_Setup.exe -Algorithm SHA256)
-    InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000
+    InstallerUrl: https://github.com/Mohammedkhaled96/NexusShell/releases/download/v4.0.0/NexusShell_Silent_Setup.exe
+    InstallerSha256: CD2D7572C8A9DD9E945477D71EFD00DDF99557D92D729CAA5817766500F824B4
     InstallerSwitches:
       Silent: /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
       SilentWithProgress: /SILENT /SUPPRESSMSGBOXES /NORESTART
