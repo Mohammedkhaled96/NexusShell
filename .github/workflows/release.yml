@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*', 'V*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish win-x64
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish self-contained build
+        run: dotnet publish NexusShell.App/NexusShell.App.csproj -c Release -r win-x64 --self-contained true -o publish
+
+      - name: Package zip + SHA256
+        shell: pwsh
+        run: |
+          $name = "NexusShell-${{ github.ref_name }}-win-x64.zip" -replace '/', '-'
+          Compress-Archive -Path publish/* -DestinationPath $name
+          $hash = (Get-FileHash $name -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name" | Out-File "$name.sha256" -Encoding ascii
+          "ZIP_NAME=$name" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NexusShell-win-x64
+          path: |
+            ${{ env.ZIP_NAME }}
+            ${{ env.ZIP_NAME }}.sha256
+
+      - name: Attach to GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ZIP_NAME }}
+            ${{ env.ZIP_NAME }}.sha256
+          generate_release_notes: true
