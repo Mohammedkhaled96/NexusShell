@@ -1,0 +1,4 @@
+# Installers are distributed via GitHub Releases
+*.exe
+*.msi
+*.zip
