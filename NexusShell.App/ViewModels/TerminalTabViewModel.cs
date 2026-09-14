@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -77,6 +78,7 @@ namespace NexusShell.App.ViewModels
         private long _lastRedrawTicks;
         private int  _redrawStreak;
         private long _animatingUntilTicks;
+        private readonly TuiSelectionTracker _tuiTracker = new();
 
         public string Header { get; set; }
 
@@ -542,7 +544,7 @@ namespace NexusShell.App.ViewModels
             }
 
             // 4) Fast-path completion: a bare shell prompt means the command finished.
-            if (_isCommandRunning && _promptDetect.IsMatch(stripped))
+            if (_isCommandRunning && !_terminal.HasChildProcesses() && _promptDetect.IsMatch(stripped))
                 Application.Current?.Dispatcher.BeginInvoke(() => MarkCommandCompleted());
 
             // 5) Output tick (throttled in the service).
@@ -559,6 +561,9 @@ namespace NexusShell.App.ViewModels
         {
             if (!_isCommandRunning) { _idleTimer.Stop(); return; }
             if (Environment.TickCount64 - Interlocked.Read(ref _lastOutputTicks) < IdleQuietMs) return;
+
+            // If a child process (like agy, python, node, etc.) is running, keep command active
+            if (_terminal.HasChildProcesses()) return;
 
             string tail;
             lock (_rawTailLock) { tail = _rawTail.ToString(); }
@@ -594,11 +599,15 @@ namespace NexusShell.App.ViewModels
             string lastLine = (nl >= 0 ? tail.Substring(nl + 1) : tail).TrimEnd();
             if (lastLine.Length == 0) return false;
 
-            char last = lastLine[lastLine.Length - 1];
-            if (last == '>') return true; // PowerShell / cmd
+            // Authentic PowerShell / CMD prompts end with > and contain drive/path
+            if (lastLine.EndsWith(">"))
+            {
+                return _promptDetect.IsMatch(lastLine);
+            }
 
             // POSIX shells (bash/zsh/wsl). Require a plausible prompt char before the
             // sigil so a lone '$'/'#' in program output is far less likely to match.
+            char last = lastLine[lastLine.Length - 1];
             if (last == '$' || last == '#' || last == '%')
             {
                 if (lastLine.Length < 2) return false;
@@ -670,6 +679,25 @@ namespace NexusShell.App.ViewModels
         }
 
         public void WriteInput(string input) => _terminal.WriteInput(input);
+
+        /// <summary>
+        /// Sends raw bytes directly to the ConPTY child process stdin without adding \r\n.
+        /// </summary>
+        public void SendRawInput(byte[] data) => _terminal.WriteRawInput(data);
+
+        /// <summary>
+        /// Sends a single UTF-8 character directly to the ConPTY stdin.
+        /// </summary>
+        public void SendCharacter(char c) => _terminal.WriteRawInput(Encoding.UTF8.GetBytes(new[] { c }));
+
+        /// <summary>
+        /// Sends a raw string directly to ConPTY stdin without delay.
+        /// </summary>
+        public void SendRawString(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return;
+            _terminal.WriteRawInput(Encoding.UTF8.GetBytes(s));
+        }
         
         public void StopCurrentExecution()
         {

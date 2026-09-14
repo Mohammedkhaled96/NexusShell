@@ -20,15 +20,18 @@ namespace NexusShell.App.ViewModels
 "\n" +
 "1. INTRODUCTION\n" +
 "--------------------------------------------------\n" +
-"Welcome to NexusShell. This application is a high-performance\n" +
+"Welcome to NexusShell. This application is an authentic, high-performance\n" +
 "terminal environment built for developers and power users, with\n" +
-"native support for accessibility. It provides a seamless interface\n" +
-"for PowerShell, CMD, and WSL with integrated AI assistance.\n" +
+"native support for accessibility. It provides a true terminal host\n" +
+"for PowerShell, CMD, and WSL with direct support for modern AI agents,\n" +
+"brokers, and interactive CLI tools.\n" +
 "\n" +
-"Command output is rendered as clean, accurate text inside accessible\n" +
-"command blocks (a heading for each command and a live region for its\n" +
-"output), so NVDA and JAWS read results naturally - with no duplicated\n" +
-"lines or stray control characters.\n" +
+"Both input and output operate as a true, native terminal pipeline:\n" +
+"the Command Input box streams raw input directly to the running shell\n" +
+"or agent without artificial barriers, while output is rendered into\n" +
+"accessible command blocks (a heading for each command and a live region\n" +
+"for its output), so NVDA and JAWS read results naturally — with no\n" +
+"duplicated lines or stray control characters.\n" +
 "\n" +
 "2. GETTING STARTED: AI API KEY SETUP\n" +
 "--------------------------------------------------\n" +
@@ -161,23 +164,39 @@ namespace NexusShell.App.ViewModels
 "\n" +
 "5. ACCESSIBILITY & SCREEN READERS (NVDA / JAWS)\n" +
 "--------------------------------------------------\n" +
-"NexusShell is optimized for all major screen readers:\n" +
+"NexusShell is engineered blind-first with comprehensive screen reader integration:\n" +
 "\n" +
-"[ Terminal Area ]\n" +
+"[ Terminal Area & Multi-Line Editing ]\n" +
 "- Output is presented as accessible command blocks: each command is\n" +
 "  a heading, and its result is a live region beneath it.\n" +
 "- Your screen reader treats the output as a web document (browse mode):\n" +
 "  press 'H' to jump between commands by heading, and use arrow keys to\n" +
 "  read the output line by line.\n" +
-"- New output is announced politely and does not interrupt your reading.\n" +
-"- Type commands in the Command Input box and press Enter to run them;\n" +
-"  press F6 or Escape to return focus to the input box at any time.\n" +
+"- Quiet, Decoupled Typing: Command input is decoupled from the UI echo loop,\n" +
+"  ensuring your screen reader only announces your typing naturally.\n" +
+"- Multi-Line Input: Press Shift + Enter in the Command Input box to create\n" +
+"  clean multi-line commands, scripts, or queries before submitting.\n" +
+"- History Navigation: Up and Down arrow keys cycle through previous commands\n" +
+"  with instant direct speech announcement of the loaded command.\n" +
 "\n" +
-"[ Interactive Screens / TUIs ]\n" +
-"- When interactive menus are detected (e.g. running 'agy /model' or selecting options),\n" +
-"  an accessible HTML dialog overlay opens automatically, containing form controls.\n" +
-"- Screen readers are automatically trapped inside this dialog to easily navigate options.\n" +
-"- Use Arrow keys to select option items, and Space/Enter to activate. Press Escape to close.\n" +
+"[ Authentic Terminal Streaming & Interactive Agents ]\n" +
+"- Direct Shell & Agent Interactivity: The Command Input box operates as\n" +
+"  a true terminal stream, forwarding keystrokes, arrows, and controls\n" +
+"  directly to PowerShell, CMD, and interactive agents (e.g. agy, fzf)\n" +
+"  with immediate, authentic responses.\n" +
+"- Reliable Screen Navigation: Enhanced key handling allows smooth dismissal\n" +
+"  and cancellation in interactive command-line sessions.\n" +
+"\n" +
+"[ Dynamic PowerShell Autocompletion ]\n" +
+"- High-speed, out-of-process runspace queries provide authentic command,\n" +
+"  cmdlet, and path completions.\n" +
+"- Navigate suggestions using Up/Down arrows with positional audio feedback\n" +
+"  (e.g. 'Item, 1 of 12'), press Tab or Enter to apply, or Escape to dismiss.\n" +
+"\n" +
+"[ Isolated Audio Feedback ]\n" +
+"- Subtle sound cues provide spatial orientation without clipping.\n" +
+"- Typing clicks (KeyType) execute on dedicated background threads to ensure\n" +
+"  they never duck or clip speech synthesizer output.\n" +
 "\n" +
 "[ Bilingual & RTL Support ]\n" +
 "- Terminal output lines are dynamically processed for Directionality (dir=\"auto\").\n" +
@@ -204,21 +223,21 @@ namespace NexusShell.App.ViewModels
 "F2 / Alt+S        : Open Settings categories\n" +
 "F6 / Escape       : Return focus to Command Input box\n" +
 "Enter             : Run command (Terminal) / Send message (AI Chat)\n" +
-"Shift + Enter     : New line in AI Chat input\n" +
+"Shift + Enter     : Insert new line (Multi-line Terminal & AI Chat input)\n" +
 "Ctrl + T          : Open a new terminal tab\n" +
 "Ctrl + L          : Clear terminal screen\n" +
 "Ctrl + Shift + S  : Toggle Execute / Stop command\n" +
 "Ctrl + Enter      : (API Tester) Send request\n" +
 "Ctrl + S          : (API Tester) Save active request to collection\n" +
 "Esc               : (API Tester) Cancel an in-flight request\n" +
-"Arrow Keys        : (Interactive Dialog) Navigate options\n" +
-"Space / Enter     : (Interactive Dialog) Select & confirm option\n" +
-"Escape            : (Interactive Dialog) Cancel and dismiss dialog\n" +
+"Arrow Keys        : (Interactive Menus & Suggestions) Navigate options\n" +
+"Space / Enter     : (Interactive Menus) Select & confirm option\n" +
+"Escape            : (Interactive Menus & Suggestions) Cancel / Dismiss\n" +
 "\n" +
 "7. SUPPORT & CREDITS\n" +
 "--------------------------------------------------\n" +
 "Developers: Mohammed Khaled & Farid Mohammed\n" +
-"Version 4.0.0 - Built for Performance and Accessibility.\n" +
+"Version 4.1.1 - Built for Performance and Accessibility.\n" +
 "Thank you for using NexusShell!\n";
         }
     }

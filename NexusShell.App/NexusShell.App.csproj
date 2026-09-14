@@ -10,9 +10,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>4.0.0</Version>
-    <FileVersion>4.0.0.0</FileVersion>
-    <AssemblyVersion>4.0.0.0</AssemblyVersion>
+    <Version>4.1.1</Version>
+    <FileVersion>4.1.1.0</FileVersion>
+    <AssemblyVersion>4.1.1.0</AssemblyVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
@@ -53,6 +53,9 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+
+    <!-- PowerShell SDK for Native Dynamic Auto-Completion -->
+    <PackageReference Include="System.Management.Automation" Version="7.4.6" />
   </ItemGroup>
 
   <ItemGroup>

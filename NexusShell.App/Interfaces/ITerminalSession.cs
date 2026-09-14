@@ -14,6 +14,8 @@ namespace NexusShell.App.Interfaces
         /// to TUI applications.
         /// </summary>
         void WriteRawInput(byte[] data);
+        int ProcessId { get; }
+        bool HasChildProcesses();
         void Refresh();
     }
 }

@@ -8,371 +8,149 @@ description: >-
   WebView2 / xterm.js renderer", "settings/config/settings.json",
   "AI/Groq/HttpClient", "sound effects", "toast notification", "API tester",
   or anything under `NexusShell.App`. If the task touches this repo, FOLLOW THIS FILE.
-compatibility: ".NET 10 SDK (Windows Desktop) · TFM net10.0-windows10.0.19041.0 · WPF · WebView2 runtime · Windows 10 1903+ · x64 · v4.0.0"
+compatibility: ".NET 10 SDK (Windows Desktop) · TFM net10.0-windows10.0.19041.0 · WPF · WebView2 runtime · Windows 10 1903+ · x64 · v4.1.1"
 ---
 
-# NexusShell — AI Agent Guide
+# NexusShell V4.1.1 — Agent Operational Manual & Architectural Blueprint
 
-> Single WPF desktop project. There is **no** web API, database/EF, message broker,
-> or microservice topology — do not invent them. The sections below map the usual
-> backend concepts onto this app's real equivalents.
+> **System Version:** NexusShell v4.1.1  
+> **Target Framework:** .NET 10 Windows (TFM: `net10.0-windows10.0.19041.0` / C# 12)  
+> **Primary Philosophy:** Blind-First Accessibility (Universal Screen-Reader & Audio UX) + High-Performance Low-Latency ConPTY Emulation + AI-Augmented Developer Workflows.
 
-## 1. Project Overview
+---
 
-NexusShell (`NexusShell.App`) is a Windows terminal host: it spawns real shells
-(PowerShell/cmd/WSL) through **Win32 ConPTY**, and renders their output as an
-**accessible HTML command-block log** inside a **WebView2** — a **hidden xterm.js**
-instance resolves the raw VT stream (cursor moves / `\r` / ANSI all collapse to
-clean text), which is shown as `<pre role="log" aria-live>` blocks that NVDA/JAWS
-read. It layers on AI assistance (Groq), an HTTP API tester, manager windows
-(SSH/alias/snippet/env/shortcut/theme), UI sound effects, and Windows toast
-notifications.
+## 1. Executive Architectural Overview
 
-**Architecture:** single-process **WPF + MVVM**, wired by the
-`Microsoft.Extensions.Hosting` Generic Host (DI + Serilog). Internals are
-**service-oriented** (interface in `Interfaces/`, implementation in `Services/`)
-and the terminal data path is **event-driven** (plain `event Action<string>`),
-with the VT-resolution + duplication-removal done by xterm.js inside the WebView
-(there is **no** C# output-filter pipeline — it was removed in v4.0.0).
+NexusShell (`NexusShell.App`) is an enterprise-grade, blind-first Windows terminal emulator and developer environment. It spawns real shells (PowerShell, CMD, WSL, custom agents) through **Win32 ConPTY**, and renders their output as an **accessible HTML command-block stream** inside **WebView2** using a hidden in-memory **xterm.js** parser.
 
 ```
-                        ┌─────────────────────── Generic Host (App.xaml.cs) ──────────────────────┐
-                        │  DI container · Serilog · IConfigManager · IHttpClientFactory("groq")    │
-                        └─────────────────────────────────────────────────────────────────────────┘
- input (WPF box) ─► MainWindow ─► MainViewModel ─► TerminalTabViewModel ─► ITerminalSession ─► ConPTY ─► shell.exe
-                                                       ▲ raw VT bytes (reader Thread)        │
-        WebTerminal/terminal.html  ◄── RawOutputReceived / CommandStarted ◄── TerminalTabViewModel.OnTerminalOutput
-        (WebView2: hidden xterm.js → accessible <pre role=log aria-live> command-blocks; squashes blank runs)
+                         ┌─────────────────────── Generic Host (App.xaml.cs) ──────────────────────┐
+                         │  DI container · Serilog · IConfigManager · IHttpClientFactory("groq")    │
+                         └─────────────────────────────────────────────────────────────────────────┘
+  input (WPF box) ─► MainWindow ─► MainViewModel ─► TerminalTabViewModel ─► ITerminalSession ─► ConPTY ─► shell.exe
+                                                         ▲ raw VT bytes (reader Thread)        │
+          WebTerminal/terminal.html  ◄── RawOutputReceived / CommandStarted ◄── TerminalTabViewModel.OnTerminalOutput
+          (WebView2: hidden xterm.js → accessible <pre class=command-output> command-blocks; squashes blank runs)
 
- Side services: AIService ─HTTP─► api.groq.com   ·   ConfigManager ◄─► %AppData%\NexusShell\settings.json
-                SoundService(MediaPlayer)        ·   NotificationService(toast)  ·  WindowService(modeless windows)
+  Side services: AIService ─HTTP─► api.groq.com   ·   ConfigManager ◄─► %AppData%\NexusShell\settings.json
+                 SoundService(Polyphonic)        ·   NotificationService(toast)  ·  WindowService(modeless windows)
+                 ScreenReaderAnnouncer           ·   PowerShellCompletionService (Out-of-Process Runspace)
 ```
 
-> **Terminal I/O model (v4.0.0):** OUTPUT lives in the WebView2 renderer; INPUT stays
-> in the WPF command box (`MainWindow`). `TerminalTabViewModel` forwards the **raw**
-> ConPTY stream to the page via `RawOutputReceived`, signals a new block on submit via
-> `CommandStarted`, and keeps an ANSI-stripped copy for the AI explain/summarize
-> features. The C#↔page bridge is a first-char protocol over WebView2 messages
-> (`o`=output, `c`=command-start, `x`=system, `k`=clear, `s`=shell, `d`=prompt-detected-by-js, `i`=interactive-prompt-config-or-result).
->
-> **Interactive Prompts (TUI) & Bidi RTL:** TUI detection (e.g. `agy` menus) is now fully implemented
-> in JavaScript (`terminal.html`) reading from the clean `xterm.js` buffer. When detected, JS sends `d` to C#,
-> C# coordinates state, and sends `i` back to JS to display an accessible HTML `<dialog>` overlay.
-> Terminal output lines are wrapped in `<div dir="auto">` allowing the browser to natively handle
-> Visual RTL alignment for Arabic/mixed text without breaking logical text for screen readers.
+---
 
-## 2. Codebase Navigation
+## 2. Universal Terminal Input & ConPTY Streaming Pipeline
 
-Project root: `NexusShell.App/` (solution `NexusShell.sln`).
+### 2.1 ConPTY Process Initialization & Memory Safety
+- **Pseudo Console Creation**: Managed in `TerminalSession.cs` via native Win32 calls: `CreatePipe`, `CreatePseudoConsole`, `InitializeProcThreadAttributeList`, and `UpdateProcThreadAttribute` (`PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE`).
+- **Process Creation**: Spawns child shells using `EXTENDED_STARTUPINFO_PRESENT` (`0x00080000`). Child processes attach directly to the Pseudo Console's input/output handles. Parent immediately closes duplicated handles to prevent deadlocks.
+- **DLL Hijacking Mitigation**: When starting a shell session in a folder containing `*.dll` files, `TerminalTabViewModel` initializes the host process from `C:\Windows\System32` and switches directory via startup arguments (`Set-Location` or `@cd /d`) to prevent `0xc0000142` DLL initialization errors.
+- **Output Streaming**: Dedicated background reader thread `ReadOutputLoop` pulls 4096-byte buffers and decodes them via stateful `Decoder` to ensure multi-byte UTF-8 sequences across chunk boundaries are never corrupted.
 
-| Folder | Purpose |
+### 2.2 Dual Input Transmission Pipeline
+NexusShell maintains two distinct input paths:
+1. **Standard Command Input (`WriteInput`)**:
+   - Converts input text to UTF-8 bytes.
+   - Writes payload via Win32 `WriteFile`.
+   - Non-blocking `50ms` delay (`WriteInputDelayMs`) prevents race conditions with ConPTY echo buffers.
+   - Appends `\r\n` and forces `FlushFileBuffers`.
+   - **Privacy Contract**: Never logs raw input text to Serilog; logs only byte counts to protect credentials, environment secrets, and private keys.
+2. **Raw Binary Keystroke Forwarding (`WriteRawInput` / `SendRawInput`)**:
+   - Sends exact ANSI escape byte sequences directly to the ConPTY input pipe without modifying text or injecting newlines.
+   - Used for TUI navigation (e.g., Up: `0x1B, 0x5B, 0x41`, Down: `0x1B, 0x5B, 0x42`, Enter: `0x0D`, Esc: `0x1B`, Tab: `0x09`, Backspace: `0x08`, Ctrl+C: `0x03`).
+   - Supports interactive CLI tools (Inquirer.js, `npm init`, `git rebase -i`, `agy`, `claude-code`).
+
+### 2.3 Shift+Enter Multi-Line Input Architecture
+- In `MainWindow.xaml` and `MainWindow.xaml.cs`, `CommandInput` is configured for decoupled, calm native typing.
+- Plain `Enter` executes `SendCommand`, while `Shift+Enter` inserts an authentic multi-line newline (`\r\n` / `\n`) into the buffer without executing, streaming `\n` to ConPTY when an interactive CLI tool is running.
+
+---
+
+## 3. Blind-First Screen Reader Accessibility Architecture
+
+### 3.1 Live ConPTY Cursor & Item Reflection
+- In `terminal.html`, `xterm.js` parses the active 2D terminal grid.
+- **Active Cursor Reflection**: Detects the active line containing pointer glyphs (`>`, `●`, `❯`, `→`, `*`) or at the cursor row.
+- **TUI Checkbox State Extraction**:
+  - Automatically identifies checked states (`[x]`, `[X]`, `[✔]`, `[✓]`, `(*)`, `(•)`, `☑`, `✔`) $\rightarrow$ announces `"{ItemName}، مربع اختيار محدد"`.
+  - Automatically identifies unchecked states (`[ ]`, `( )`, `☐`, `○`) $\rightarrow$ announces `"{ItemName}، مربع اختيار غير محدد"`.
+  - Single-choice radio/menu items $\rightarrow$ announces `"{ItemName}"` cleanly.
+- **Direct High-Speed Announcer**: `ScreenReaderAnnouncer.cs` integrates directly with:
+  - **NVDA Controller API**: P/Invoke to `nvdaController_speakText` (0ms direct speech).
+  - **JAWS API**: COM reflection to `FreedomSci.JawsApi`.
+  - **UI Automation Fallback**: `UIElementAutomationPeer.RaiseNotificationEvent`.
+
+### 3.2 Autonomous Question & Interactive Prompt Detector
+- Detects question lines emitted by ConPTY (`/^[\?؟]\s+\S+/`).
+- When a new question prompt appears, it is seamlessly combined with the first option to provide complete verbal context on appearance, without repeating during subsequent Up/Down arrow navigation.
+
+---
+
+## 4. Isolated Audio Architecture (Polyphonic Sound Engine)
+
+### 4.1 Polyphonic Concurrency & Thread Isolation
+- `SoundService.cs` maintains independent `MediaPlayer` instances for each `AppSound`, allowing sound effects to overlap naturally without audio clipping.
+- **KeyType Background Audio**: Preloads `key.wav` in memory and dispatches typing click audio directly to the background thread pool (`ThreadPool.QueueUserWorkItem`), completely bypassing the UI Dispatcher to prevent audio ducking or speech clipping with NVDA/JAWS.
+
+### 4.2 Complete Audio Mapping & Roles
+| AppSound | Audio Asset | Scale | Throttle (MinGap) | Semantic Role & Trigger Source |
+| :--- | :--- | :--- | :--- | :--- |
+| `KeyType` | `key.wav` | 0.55 | 0 ms | Keystroke click during command typing (isolated background thread). |
+| `CommandSent` | `send.wav` | 0.90 | 0 ms | User executes a command or submits a query. |
+| `CommandCompleted` | `complete.wav`| 1.00 | 0 ms | Command execution finished (dual-path detection). |
+| `Output` | `output.wav` | 0.40 | 220 ms | Streaming output arrival tick (throttled). |
+| `OpenManager` | `manager.wav` | 0.90 | 0 ms | Opening Aliases, Snippets, SSH, Env, or API Tester. |
+| `OpenAI` | `ai.wav` | 0.95 | 0 ms | AI Chat or AI explanation modal launched. |
+| `OpenSettings` | `settings.wav`| 0.90 | 0 ms | Opening Settings window. |
+| `Toggle` | `toggle.wav` | 0.70 | 30 ms | Dropdowns, suggestion popups, option changes. |
+| `CloseWindow` | `close.wav` | 0.85 | 150 ms | Dismissing windows, cancel buttons, escape actions. |
+| `Error` | `error.wav` | 0.95 | 250 ms | Terminal crash, network error, or invalid action. |
+| `NewTab` | `tab.wav` | 0.85 | 150 ms | Adding tabs, profiles, or new entities. |
+| `Notify` | `notify.wav` | 0.95 | 0 ms | Suggestion acceptance or completion alert. |
+
+---
+
+## 5. Authentic Dynamic PowerShell Autocompletion
+
+### 5.1 Out-of-Process Runspace Completion Architecture
+- `PowerShellCompletionService.cs` initializes a dedicated background PowerShell `Runspace`.
+- Queries `[System.Management.Automation.CommandCompletion]::CompleteInput` asynchronously with thread-safe `SemaphoreSlim` protection.
+- Returns rich `CompletionItem` records containing exact replacement boundaries (`ReplacementIndex`, `ReplacementLength`, `ListItemText`, `ToolTip`).
+- Suggestion navigation with Up/Down arrows announces positional feedback (e.g. `"{ItemName}، 1 من 12"`).
+
+---
+
+## 6. Codebase Navigation & Key Files
+
+| Folder / File | Purpose |
 |---|---|
-| `App.xaml(.cs)` | Composition root: DI registration + startup. **All wiring lives here.** |
-| `Commands/` | `RelayCommand` (manual `ICommand`). |
+| `App.xaml(.cs)` | Composition root: Generic Host DI registration + Serilog + global startup. |
+| `Commands/RelayCommand.cs` | Type-safe MVVM `ICommand` implementation. |
 | `Interfaces/` | `I*` service contracts (DI abstractions). |
-| `Services/` | Service/Manager implementations (contracts in `Interfaces/`). |
-| `ViewModels/` | `*ViewModel : ViewModelBase`. Business/UI logic. |
-| `Views/` | `*Window.xaml(.cs)`; `TerminalView` is a **WebView2 host**; `InteractiveScreenView`. Thin code-behind. |
-| `WebTerminal/` | xterm.js renderer assets copied to output: `terminal.html` (accessible HTML-block renderer + hidden xterm parser) + `xterm.js`. Served to WebView2 via a virtual host. |
-| `Models/` | POCOs (e.g. `AppSettings`, `ShellProfile`, `DetectedPrompt`). |
-| `Helpers/` | WPF value converters, `RichTextBoxHelper`. |
-| `Audios/` | `*.wav` sound assets (copied to output). |
+| `Services/TerminalSession.cs` | ConPTY process spawner, Win32 pseudo-console, pipe I/O. |
+| `Services/ScreenReaderAnnouncer.cs` | High-speed NVDA/JAWS direct speech API and checkbox announcer. |
+| `Services/PowerShellCompletionService.cs` | Dedicated PowerShell Runspace completion engine. |
+| `Services/SoundService.cs` | Polyphonic UI audio engine with background thread KeyType isolation. |
+| `ViewModels/MainViewModel.cs` | Root coordinator, multi-tab manager, suggestion handler. |
+| `ViewModels/TerminalTabViewModel.cs` | Per-tab lifecycle, dual-path completion watchdog, raw streaming. |
+| `Views/MainWindow.xaml(.cs)` | Primary UI, input box, suggestion popup, keystroke router. |
+| `Views/TerminalView.xaml(.cs)` | WebView2 host control and message dispatcher. |
+| `WebTerminal/terminal.html` | Hidden xterm.js VT parser + accessible HTML command-block renderer. |
+| `WebTerminal/xterm.js` | High-performance in-memory VT sequence resolution library. |
+| `Models/AppSettings.cs` | Application configuration data model (`settings.json`). |
+| `Audios/` | PCM WAV sound assets (copied to output). |
 
-**Find by role:** "controllers/endpoints" → `Views/*Window` + their `*ViewModel`;
-"services" → `Services/` (contract in `Interfaces/`); "repository/DTOs" →
-`Services/ConfigManager.cs` + `Models/`; "config" → `Models/AppSettings.cs` +
-`settings.json`; **"tests" → none exist yet** (see §9).
+---
 
-**Naming conventions (MUST follow):**
-- Interfaces start with `I`: `IConfigManager`, `ISoundService`.
-- Services end with `Service` or `Manager` and implement an `I*` interface.
-- ViewModels end with `ViewModel` and inherit `ViewModelBase`.
-- Windows end with `Window`; embedded controls end with `View`.
-- `ICommand` properties end with `Command`; their handlers are `Execute<Name>(object?)`.
+## 7. Strict Developer Invariants & Regression Protections
 
-## 3. Tech Stack & Dependencies
-
-- **Runtime:** .NET 10, `net10.0-windows10.0.19041.0`, `WinExe`, `Nullable=enable`,
-  `ImplicitUsings=enable`, `AllowUnsafeBlocks=true` (ConPTY P/Invoke), `app.manifest`.
-- **Key packages** (exact versions from `NexusShell.App.csproj`):
-
-| Package | Ver | Role |
-|---|---|---|
-| `Microsoft.Web.WebView2` | 1.0.2792.45 | Chromium host for the xterm.js accessible-HTML terminal renderer (`TerminalView`). Requires the evergreen WebView2 runtime. |
-| `Microsoft.Extensions.Hosting` | 10.0.8 | Generic Host: DI + lifetime. |
-| `CommunityToolkit.Mvvm` | 8.4.2 | `ObservableObject` base; `[ObservableProperty]`/`[RelayCommand]` generators. |
-| `Microsoft.Extensions.Http.Resilience` | 10.6.0 | Polly v8 standard pipeline for the `"groq"` client. |
-| `Serilog.Extensions.Hosting` (+ Sinks.Async 2.1.0, File 7.0.0, Console 6.1.1) | 10.0.0 | Structured logging to file. |
-| `Microsoft.Windows.CsWin32` | 0.3.275 | **Build-time** P/Invoke source-gen (`NativeMethods`). |
-| `Microsoft.Toolkit.Uwp.Notifications` | 7.1.3 | Action-Center toasts (`NotificationService`). |
-| `Newtonsoft.Json` 13.0.4 / `System.Text.Json` | — | JSON (STJ for settings + Groq; Newtonsoft used by older modules). |
-| `Autoupdater.NET.Official` | 1.9.2 | Self-update check. |
-
-- **Shared "kernel"** (no separate library — these are the reuse points): `ViewModelBase`,
-  `RelayCommand`, `IConfigManager`/`ConfigManager`, `IWindowService`/`WindowService`,
-  `ISoundService`, and the WebView2 renderer (`WebTerminal/terminal.html`).
-
-## 4. Development Patterns (CRITICAL)
-
-### 4.1 Dependency injection registration
-**Where:** `App.ConfigureServices(IServiceCollection)` in `App.xaml.cs` — the ONLY
-place services are registered.
-```csharp
-services.AddSingleton<IConfigManager, ConfigManager>();      // shared, stateless-ish
-services.AddTransient<ITerminalSession, TerminalSession>();  // per-tab: owns a ConPTY session
-services.AddSingleton<MainViewModel>();                      // app-lifetime root VM
-services.AddTransient<SettingsWindow>();                     // new instance per open
-services.AddHttpClient("groq", c => c.Timeout = TimeSpan.FromSeconds(60))
-        .AddStandardResilienceHandler();                     // retries+breaker+timeout
-```
-**Rule:** stateless/app-wide → `AddSingleton`; anything holding per-tab or per-window
-state (`ITerminalSession`, every manager VM/Window) → `AddTransient`.
-**Anti-pattern:** `new SomeService(...)` in a VM, or a Singleton that caches mutable
-per-tab state (caused real cross-tab bleed — that is why `ITerminalSession` is Transient).
-
-### 4.2 "Endpoint" creation = ViewModel + Window + WindowService
-There are no HTTP endpoints; a user-facing feature is a **Window + ViewModel** opened
-through `IWindowService`.
-```csharp
-// WindowService.cs — resolve from DI, never `new` the window directly.
-public void ShowThemeManagerWindow()
-{
-    PlaySound(AppSound.OpenManager);
-    var window = _serviceProvider.GetRequiredService<ThemeManagerWindow>();
-    window.Owner = Application.Current.MainWindow;
-    window.Closed += (_, _) => PlaySound(AppSound.CloseWindow);
-    window.Show();
-}
-```
-**Anti-pattern:** constructing windows in a ViewModel — VMs must stay UI-toolkit-free
-beyond `ICommand`/`Dispatcher`; window lifecycle belongs to `WindowService`.
-
-### 4.3 Service layer
-Contract in `Interfaces/`, impl in `Services/`, constructor-inject `ILogger<T>`.
-```csharp
-public sealed class SuggestionService : ISuggestionService
-{
-    private readonly ILogger<SuggestionService> _logger;
-    public SuggestionService(ILogger<SuggestionService> logger) => _logger = logger;
-}
-```
-Then register in `ConfigureServices`. **Anti-pattern:** static singletons for stateful
-logic (`AIAudioPlayer`/`SecretProtector` are static **only** because they are stateless
-helpers).
-
-### 4.4 ViewModel + Command pattern
-`ViewModelBase` is `CommunityToolkit.Mvvm.ComponentModel.ObservableObject`.
-```csharp
-private bool _isBusy;
-public bool IsBusy { get => _isBusy; set => SetProperty(ref _isBusy, value); }
-
-public ICommand SaveCommand { get; }
-// in ctor:
-SaveCommand = new RelayCommand(ExecuteSave, _ => SelectedTab != null);
-```
-`RelayCommand.CanExecuteChanged` is wired to `CommandManager.RequerySuggested`, so WPF
-re-queries automatically. **Anti-pattern:** raising `PropertyChanged` from a background
-thread without `Dispatcher` marshaling (see §4.9).
-
-### 4.5 "Data access" = `ConfigManager` (JSON, not a DB)
-The single source of persisted state is `%AppData%\NexusShell\settings.json` via
-`IConfigManager`. **ALWAYS Load-modify-Save** — never start from a blank object.
-```csharp
-var settings = _configManager.Load();   // preserves Aliases, Snippets, Themes, SSH, ...
-settings.FontSize = (int)FontSize;       // mutate only your fields
-_configManager.Save(settings);           // atomic temp-file + File.Replace
-```
-**NEVER** do `_configManager.Save(new AppSettings { FontSize = x })` — it wipes every
-field you did not set. Saving is crash-safe (writes `.tmp`, then `File.Replace`); a
-corrupt file is backed up to `.bak` and defaults are used.
-
-### 4.6 Error handling & response formatting
-- **Services degrade, they don't throw to the UI.** `AIService` returns a friendly
-  `string` on HTTP failure; `SoundService`/`AIAudioPlayer` swallow all playback errors.
-- **Last-resort UI safety net:** `App.OnDispatcherUnhandledException` logs `Fatal`, shows
-  one `MessageBox`, and shuts down. Do not let exceptions escape async UI handlers.
-```csharp
-if (!response.IsSuccessStatusCode)
-{
-    _logger.LogError("Groq API error {Status}: {Body}", response.StatusCode, err);
-    return "API Error... Check your API key in Settings.";   // user-readable, not an exception
-}
-```
-
-### 4.7 Validation
-Guard clauses + `CanExecute` predicates; no FluentValidation.
-`if (string.IsNullOrWhiteSpace(CurrentCommand)) return;` and
-`new RelayCommand(ExecuteSend, CanExecuteSend)`.
-
-### 4.8 Logging (Serilog)
-Inject `ILogger<T>`; use **structured** templates (named tokens, not interpolation).
-```csharp
-_logger.LogInformation("Terminal session started. Process ID: {ProcessId}", pid);
-```
-**NEVER log secrets or raw terminal input** — see `TerminalSession.WriteInput` which
-logs only the byte count: `"Writing {ByteCount} bytes of input."`.
-
-### 4.9 Configuration access (no Options pattern)
-This app **re-reads** config on demand via `IConfigManager.Load()` rather than binding
-`IOptions<T>`. Call `Load()` when you need current values; do not cache `AppSettings`
-long-term in a Singleton.
-
-### 4.10 Inter-component communication
-Plain **events** (`event Action<string>? OutputReceived;`) and direct DI calls. Cross-
-thread results MUST hop to the UI thread:
-```csharp
-Application.Current?.Dispatcher.BeginInvoke(() => IsCommandRunning = false);
-```
-
-### 4.11 Background work
-Use `Task.Run` for fire-and-forget init and a dedicated `Thread` for the blocking ConPTY
-read loop. The reader raises `OutputReceived`; `TerminalTabViewModel.OnTerminalOutput`
-forwards the raw chunk to the WebView (`PostWebMessageAsString`, marshalled to the UI
-thread inside `TerminalView`). **Anti-pattern:** blocking the UI thread on shell I/O, or
-calling `MediaPlayer` / WebView2 off the `Dispatcher`.
-
-## 5. UI / "API" Conventions
-- **Commands, not routes:** expose features as `ICommand` props on a VM; bind from XAML.
-- **Accessibility is mandatory:** every actionable control sets
-  `AutomationProperties.Name` (menus, buttons, text boxes already do — match this).
-- **Mnemonics:** menu headers use `_` access keys (`"_Settings"`); keep them unique per menu.
-- **External HTTP** (the only "API" surface) is consumed, not served: always through the
-  named `"groq"` `HttpClient` with Bearer auth and `System.Text.Json`.
-
-## 6. Data Rules (`settings.json`)
-- **Load-modify-Save** every time (§4.5). The in-memory `AppSettings` holds **plaintext**
-  secrets; the file holds DPAPI **ciphertext** (`enc:v1:` prefix) — `ConfigManager` does
-  the encrypt-on-save / decrypt-on-load transparently.
-- **"Migrations" run inside `ConfigManager.Load()`** — there is no migration tool. To
-  evolve the schema, add a guarded fix-up there (e.g. it removes the legacy `Terminal`
-  profile and re-points shortcuts). Keep migrations idempotent and non-destructive.
-- **Caching:** `OutputHistoryService` / per-tab `StringBuilder` buffers are the only
-  caches. `TerminalTabViewModel` keeps two: `_outputHistory` (ANSI-stripped, for the AI
-  features) and `_rawHistory` (raw VT, replayed into a recreated WebView). Both are
-  size-capped (4–5 MB rolling) — respect the caps.
-
-## 7. Integration Patterns
-- **Add an external API:** register a named client in `ConfigureServices`, then build a
-  service that injects `IHttpClientFactory`:
-```csharp
-services.AddHttpClient("myapi", c => c.Timeout = TimeSpan.FromSeconds(30))
-        .AddStandardResilienceHandler();          // Polly v8: retry + circuit-breaker + timeout
-// ...
-var http = _httpClientFactory.CreateClient("myapi");
-```
-  Model this on `AIService.CallGroqAsync` (auth header, `StringContent`, `JsonDocument`).
-- **Message brokers / webhooks:** N/A. The nearest "callback" pattern is
-  `InteractivePromptDetector` raising `PromptDetected` → `InteractiveScreenService`.
-
-## 8. Observability
-- **Logging is the only telemetry surface.** Serilog writes async to
-  `%AppData%\NexusShell\logs\log-<date>.txt` (daily roll), template
-  `{Timestamp ...} [{Level:u3}] {Message:lj}{NewLine}{Exception}`. Config is in the
-  `App` constructor.
-- **What to log:** lifecycle (start/stop, session create/dispose), external call
-  failures, recovered exceptions — at `Information`/`Warning`/`Error`. No PII, no secrets.
-- **No metrics/Grafana/health endpoints.** "Health" verification for an agent = build is
-  clean **and** the launched process is `Responding=True` with a `MainWindowTitle` set,
-  plus no `[ERR]/[FTL]` in today's log.
-
-## 9. Testing Requirements
-**There is no test project today.** When adding tests:
-- Create `NexusShell.App.Tests/` (xUnit) as a sibling project; add it to `NexusShell.sln`.
-- Prefer **pure units** that need no WPF Dispatcher: `SuggestionService`, `CommandHistory`,
-  `SecretProtector`, `ConfigManager` migrations, `InteractivePromptDetector`.
-- Mock collaborators through their `I*` interfaces (Moq or NSubstitute).
-```csharp
-[Fact]
-public void History_navigation_returns_previous_command()
-{
-    var h = new CommandHistory();
-    h.Add("ls"); h.Add("pwd");
-    Assert.Equal("pwd", h.GetPrevious());
-}
-```
-- UI-thread code (`SoundService`, WebView2) is hard to unit-test — keep logic in testable
-  services and leave Views thin so they need no tests. The VT-resolution that used to live
-  in C# filter stages is now done by xterm.js inside `WebTerminal/terminal.html`.
-
-## 10. PR & Code Quality Checklist
-- [ ] `dotnet build NexusShell.sln -c Debug` → **0 warnings, 0 errors** (the bar is zero).
-- [ ] New service registered in `App.ConfigureServices` with the correct lifetime.
-- [ ] `Load`-modify-`Save` used for any settings change (no blank-object saves).
-- [ ] No secrets / raw input in logs; structured templates used.
-- [ ] All cross-thread UI mutations marshalled via `Dispatcher`.
-- [ ] New controls have `AutomationProperties.Name`; menu mnemonics unique.
-- [ ] Audio/IO failures swallowed (never crash the app for a non-critical effect).
-- [ ] App launches (`Responding=True`, window title set, clean log) — see §12 run note.
-
-## 11. Common Tasks (step-by-step)
-
-**Add a service**
-1. Add `IFooService` to `Interfaces/`. 2. Implement `FooService : IFooService` in
-`Services/` (inject `ILogger<FooService>`). 3. Register in `ConfigureServices`
-(`AddSingleton` if stateless, else `AddTransient`). 4. Constructor-inject where needed.
-
-**Add a manager window (feature)**
-1. `Views/FooManagerWindow.xaml(.cs)` + `ViewModels/FooManagerViewModel.cs`.
-2. Register both `AddTransient` in DI. 3. Add `ShowFooManagerWindow()` to
-`IWindowService`/`WindowService` (DI-resolve, set `Owner`, sounds on open/close).
-4. Add a `RelayCommand` on `MainViewModel` calling it. 5. Bind a `MenuItem` in
-`MainWindow.xaml` with `AutomationProperties.Name`.
-
-**Add a settings field** (Input: new bool `EnableX`)
-1. Add property to `Models/AppSettings.cs` with a default. 2. Surface it in
-`SettingsViewModel` (`SetProperty`) + `SettingsWindow.xaml`. 3. In `ExecuteSave`:
-`var s = _configManager.Load(); s.EnableX = EnableX; _configManager.Save(s);`
-(Output: persisted in `settings.json`, surviving every other field.)
-
-**Add a "migration"**
-Add an idempotent guarded fix-up inside `ConfigManager.Load()` after deserialize (model
-on the existing profile/shortcut migrations). No CLI, no EF.
-
-**Integrate a new external API** → §7.
-
-**Add a background job**
-Wrap blocking work in `Task.Run`; stream results through an `event`; marshal UI updates
-with `Dispatcher.BeginInvoke`. Stop/dispose on teardown (model on `TerminalSession`).
-
-**Add a sound effect**
-1. Drop `foo.wav` in `Audios/`. 2. Add an `AppSound.Foo` enum value + `Map` entry in
-`SoundService` (file, volume scale, min-gap ms). 3. Call `_soundService.Play(AppSound.Foo)`
-at the trigger (inject `ISoundService`).
-
-**Add localization**
-No framework today (strings are inline, some Arabic comments). To add: introduce `.resx`
-+ `ResourceManager` (or a `IStringsService`) and replace literals; do it incrementally.
-
-## 12. Guardrails & Constraints
-
-**NEVER**
-- NEVER `Save(new AppSettings{...})` — it erases unowned data. Load-modify-Save only.
-- NEVER log secrets, API keys, or raw terminal input (DPAPI-protect at rest via `SecretProtector`).
-- NEVER touch `MediaPlayer`, WebView2 (`CoreWebView2`/`PostWebMessageAsString`), or `INotifyPropertyChanged` from a non-UI thread without `Dispatcher`.
-- NEVER `new` a service/window in a ViewModel — resolve via DI / `IWindowService`.
-- NEVER block the UI thread on ConPTY/HTTP I/O; keep it async or off-thread.
-- NEVER show xterm.js itself (a canvas terminal is unreadable to screen readers). xterm.js
-  is a HIDDEN parser only; the VISIBLE output is the accessible HTML command-blocks. The
-  terminal does NOT host live full-screen TUIs — output is xterm-RESOLVED clean text and
-  input is the WPF command box.
-
-**ALWAYS**
-- ALWAYS register new services in `App.ConfigureServices` with the right lifetime.
-- ALWAYS inject `ILogger<T>` and use structured logging.
-- ALWAYS make per-tab / per-window types (`ITerminalSession`, manager VMs/Windows) `Transient` (they hold state).
-- ALWAYS marshal background→UI updates through `Application.Current.Dispatcher`.
-- ALWAYS keep the build at **0 warnings / 0 errors**.
-
-**Security:** secrets use Windows DPAPI (`CurrentUser` scope) via `SecretProtector`;
-`RegistryManager` writes (context-menu/startup) silently no-op without elevation.
-
-**Performance:** output streaming MUST stay non-blocking (raw chunks are posted to the
-WebView off the reader thread, marshalled to the `Dispatcher` only for the `PostWebMessage`
-call); high-frequency effects (output ticks, key sounds) MUST be throttled (`SoundService`
-`MinGapMs`); output buffers (`_outputHistory`/`_rawHistory`) MUST stay size-capped.
-
-**Build & run (agent/CI note):** `app.manifest` sets `requireAdministrator`, so launching
-`NexusShell.App.exe` from a non-interactive shell fails on UAC. Build with
-`dotnet build NexusShell.App\NexusShell.App.csproj -c Debug`; **launch via the .NET host**
-from the output dir — `dotnet NexusShell.App.dll` (runs as-invoker; process name is
-`dotnet`). End users double-click the elevated `.exe`.
+1. **Zero Unhandled Exceptions**: All audio, clipboard, screen-reader P/Invoke, and shell startup operations must have isolated error boundaries.
+2. **Never Break Screen Reader Experience**:
+   - Typing in `CommandInput` must be native and quiet; avoid two-way binding echo loops.
+   - Arrow keys during interactive sessions (`IsCommandRunning == true`) must stream raw ANSI bytes (`\x1b[A`, `\x1b[B`) directly to ConPTY.
+   - History navigation at the idle prompt must announce the loaded command text immediately.
+3. **ConPTY & xterm Dimensions Synchronization**:
+   - Both `TerminalSession.cs` and `terminal.html` must synchronize on identical column/row dimensions (default: 120 cols x 30 rows).
+4. **Dual-Path Command Completion**:
+   - Fast-Path: Detects authentic shell prompt in incoming stream when `!HasChildProcesses()`.
+   - Watchdog-Path: `700ms` output silence + `LooksLikePrompt(tail)` fallback for long-running scripts.

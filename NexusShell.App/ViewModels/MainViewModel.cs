@@ -32,6 +32,9 @@ namespace NexusShell.App.ViewModels
         private readonly ISuggestionService _suggestionService;
         private readonly IAIService _aiService;
         private readonly IInteractiveScreenService _interactiveScreenService;
+        private readonly IPowerShellCompletionService _psCompletionService;
+        private readonly IScreenReaderAnnouncer _screenReaderAnnouncer;
+        public IScreenReaderAnnouncer ScreenReaderAnnouncer => _screenReaderAnnouncer;
         private readonly ILogger<MainViewModel> _logger;
         private readonly IServiceProvider _serviceProvider;
         private AppSettings _settings = new();
@@ -53,61 +56,82 @@ namespace NexusShell.App.ViewModels
             set => SetProperty(ref _selectedProfile, value);
         }
 
-        // Suggestions
-        private string _currentSuggestionInput = string.Empty;
-        private int _loadedSuggestionCount;
-
-        public ObservableCollection<string> Suggestions { get; } = new ObservableCollection<string>();
-
-        private string _selectedSuggestion = string.Empty;
-        public string SelectedSuggestion
+        // Authentic Dynamic PowerShell Suggestions
+        public ObservableCollection<CompletionItem> Suggestions { get; } = new ObservableCollection<CompletionItem>();
+        private CompletionItem? _selectedSuggestion;
+        public CompletionItem? SelectedSuggestion
         {
             get => _selectedSuggestion;
-            set
-            {
-                if (SetProperty(ref _selectedSuggestion, value))
-                {
-                    if (_selectedSuggestion != null && Suggestions.Count > 0 && _selectedSuggestion == Suggestions.Last())
-                    {
-                        LoadMoreSuggestions();
-                    }
-                }
-            }
+            set => SetProperty(ref _selectedSuggestion, value);
         }
 
         private bool _isSuggestionsOpen;
         public bool IsSuggestionsOpen
         {
             get => _isSuggestionsOpen;
-            set
+            set => SetProperty(ref _isSuggestionsOpen, value);
+        }
+
+        private CancellationTokenSource? _completionCts;
+
+        public async void OnCommandInputChanged(string input, int cursorPosition)
+        {
+            if (SelectedTab?.IsCommandRunning == true || !_settings.EnableSuggestions || string.IsNullOrWhiteSpace(input))
             {
-                if (SetProperty(ref _isSuggestionsOpen, value) && value)
-                    SoundService.Play(AppSound.Toggle); // suggestions popped open
+                IsSuggestionsOpen = false;
+                Suggestions.Clear();
+                return;
+            }
+
+            _completionCts?.Cancel();
+            _completionCts = new CancellationTokenSource();
+            var ct = _completionCts.Token;
+
+            try
+            {
+                await Task.Delay(40, ct);
+
+                var matches = await _psCompletionService.GetCompletionsAsync(input, cursorPosition, ct);
+                if (ct.IsCancellationRequested) return;
+
+                Suggestions.Clear();
+                if (matches != null && matches.Count > 0)
+                {
+                    foreach (var match in matches)
+                    {
+                        Suggestions.Add(match);
+                    }
+                    SelectedSuggestion = Suggestions.FirstOrDefault();
+                    IsSuggestionsOpen = true;
+                    SoundService.Play(AppSound.Toggle);
+                }
+                else
+                {
+                    IsSuggestionsOpen = false;
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Error fetching PowerShell completions");
             }
         }
 
-        private void LoadMoreSuggestions()
+        public void ApplySelectedSuggestion(CompletionItem? item)
         {
-             if (string.IsNullOrEmpty(_currentSuggestionInput)) return;
+            if (item == null) return;
 
-             var moreResults = _suggestionService.GetSuggestions(_currentSuggestionInput, _loadedSuggestionCount, 10).ToList();
-             if (moreResults.Any())
-             {
-                 foreach(var res in moreResults)
-                 {
-                     Suggestions.Add(res);
-                 }
-                 _loadedSuggestionCount += moreResults.Count;
-             }
-        }
+            string current = CurrentCommand;
+            int replaceIdx = item.ReplacementIndex;
+            int replaceLen = item.ReplacementLength;
 
-        public void ApplySuggestion(string suggestion)
-        {
-            if (string.IsNullOrEmpty(suggestion)) return;
-            CurrentCommand = suggestion + " "; // Add space for convenience
+            string prefix = replaceIdx <= current.Length ? current.Substring(0, replaceIdx) : current;
+            string suffix = (replaceIdx + replaceLen) <= current.Length ? current.Substring(replaceIdx + replaceLen) : string.Empty;
+
+            CurrentCommand = prefix + item.CompletionText + suffix;
             IsSuggestionsOpen = false;
-            SoundService.Play(AppSound.Notify); // a suggestion was accepted
-            // Focus logic should handle moving caret to end, usually handled by View
+            SoundService.Play(AppSound.Notify);
+            _screenReaderAnnouncer.Announce($"إدراج: {item.CompletionText}");
         }
 
         public ObservableCollection<TerminalTabViewModel> Tabs { get; } = new ObservableCollection<TerminalTabViewModel>();
@@ -135,9 +159,11 @@ namespace NexusShell.App.ViewModels
             }
         }
 
+        private bool _isUpdatingCurrentCommandFromCode;
+
         private void SelectedTab_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(TerminalTabViewModel.CurrentCommand))
+            if (e.PropertyName == nameof(TerminalTabViewModel.CurrentCommand) && !_isUpdatingCurrentCommandFromCode)
                 OnPropertyChanged(nameof(CurrentCommand));
 
             if (e.PropertyName == nameof(TerminalTabViewModel.IsCommandRunning))
@@ -245,42 +271,18 @@ namespace NexusShell.App.ViewModels
             get => SelectedTab?.CurrentCommand ?? string.Empty;
             set
             {
-                if (SelectedTab != null)
+                if (SelectedTab != null && SelectedTab.CurrentCommand != value)
                 {
-                    if (SelectedTab.CurrentCommand != value)
+                    _isUpdatingCurrentCommandFromCode = true;
+                    try
                     {
                         SelectedTab.CurrentCommand = value;
-                        OnPropertyChanged();
-                        UpdateSuggestions(value);
+                    }
+                    finally
+                    {
+                        _isUpdatingCurrentCommandFromCode = false;
                     }
                 }
-            }
-        }
-
-        private void UpdateSuggestions(string input)
-        {
-            if (!_settings.EnableSuggestions || string.IsNullOrWhiteSpace(input))
-            {
-                IsSuggestionsOpen = false;
-                Suggestions.Clear();
-                return;
-            }
-
-            _currentSuggestionInput = input;
-            _loadedSuggestionCount = 0;
-
-            var results = _suggestionService.GetSuggestions(input, 0, 10).ToList();
-            if (results.Any())
-            {
-                Suggestions.Clear();
-                foreach (var res in results) Suggestions.Add(res);
-                _loadedSuggestionCount = results.Count;
-                SelectedSuggestion = Suggestions.First();
-                IsSuggestionsOpen = true;
-            }
-            else
-            {
-                IsSuggestionsOpen = false;
             }
         }
 
@@ -292,6 +294,8 @@ namespace NexusShell.App.ViewModels
             ISuggestionService suggestionService,
             IAIService aiService,
             IInteractiveScreenService interactiveScreenService,
+            IPowerShellCompletionService psCompletionService,
+            IScreenReaderAnnouncer screenReaderAnnouncer,
             ILogger<MainViewModel> logger,
             IServiceProvider serviceProvider)
         {
@@ -302,6 +306,8 @@ namespace NexusShell.App.ViewModels
             _suggestionService = suggestionService;
             _aiService = aiService;
             _interactiveScreenService = interactiveScreenService;
+            _psCompletionService = psCompletionService;
+            _screenReaderAnnouncer = screenReaderAnnouncer;
             _logger = logger;
             _serviceProvider = serviceProvider;
 
