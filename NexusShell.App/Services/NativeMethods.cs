@@ -91,6 +91,33 @@ namespace NexusShell.App.Services
         internal const uint MOD_NOREPEAT = 0x4000;
         internal const int QUAKE_HOTKEY_ID = 9000;
         internal const uint VK_BACKTICK = 0xC0; // ~ key
+
+        internal const uint TH32CS_SNAPPROCESS = 0x00000002;
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+        internal struct PROCESSENTRY32
+        {
+            public uint dwSize;
+            public uint cntUsage;
+            public uint th32ProcessID;
+            public IntPtr th32DefaultHeapID;
+            public uint th32ModuleID;
+            public uint cntThreads;
+            public uint th32ParentProcessID;
+            public int pcPriClassBase;
+            public uint dwFlags;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+            public string szExeFile;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        internal static extern IntPtr CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        internal static extern bool Process32First(IntPtr hSnapshot, ref PROCESSENTRY32 lppe);
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        internal static extern bool Process32Next(IntPtr hSnapshot, ref PROCESSENTRY32 lppe);
     }
 }
 

@@ -82,6 +82,44 @@ namespace NexusShell.App.Services
             }
         }
 
+        public int ProcessId => _processInfo.dwProcessId;
+
+        public bool HasChildProcesses()
+        {
+            int parentPid = _processInfo.dwProcessId;
+            if (parentPid <= 0) return false;
+
+            IntPtr snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if (snapshot == IntPtr.Zero || snapshot == new IntPtr(-1)) return false;
+
+            try
+            {
+                var pe = new PROCESSENTRY32();
+                pe.dwSize = (uint)Marshal.SizeOf<PROCESSENTRY32>();
+
+                if (Process32First(snapshot, ref pe))
+                {
+                    do
+                    {
+                        if (pe.th32ParentProcessID == (uint)parentPid)
+                        {
+                            return true;
+                        }
+                    } while (Process32Next(snapshot, ref pe));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Error checking child processes");
+            }
+            finally
+            {
+                CloseHandle(snapshot);
+            }
+
+            return false;
+        }
+
         public void Refresh()
         {
             // Force a flush by re-issuing the resize command with the current dimensions.

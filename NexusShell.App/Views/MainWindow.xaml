@@ -205,16 +205,26 @@
                          Padding="5"
                          CaretBrush="{Binding TextColor}"
                          TextWrapping="Wrap"
-                         AcceptsReturn="True"
+                         AcceptsReturn="False"
                          VerticalScrollBarVisibility="Auto"
+                         PreviewTextInput="CommandInput_PreviewTextInput"
+                         TextChanged="CommandInput_TextChanged"
                          AutomationProperties.Name="Command Input"
-                         AutomationProperties.HelpText="Type commands here. Press F6 to switch to terminal output.">
+                         AutomationProperties.HelpText="Type commands here. Press Tab or Enter to accept suggestions.">
                     <TextBox.InputBindings>
                         <KeyBinding Key="Enter" Command="{Binding SendCommand}" />
                     </TextBox.InputBindings>
                 </TextBox>
 
-                <Popup IsOpen="{Binding IsSuggestionsOpen}" 
+                <!-- Native UI Automation CheckBox Proxy for TUI items -->
+                <CheckBox x:Name="TuiSelectionProxy"
+                          Grid.Column="1"
+                          Width="0" Height="0" Opacity="0"
+                          Focusable="False" IsHitTestVisible="False"
+                          AutomationProperties.LiveSetting="Assertive" />
+
+                <Popup x:Name="SuggestionPopup"
+                       IsOpen="{Binding IsSuggestionsOpen}" 
                        PlacementTarget="{Binding ElementName=CommandInput}" 
                        Placement="Top"
                        StaysOpen="False"
@@ -227,10 +237,11 @@
                                  Background="Transparent" 
                                  BorderThickness="0"
                                  Foreground="#CCCCCC"
-                                 MaxHeight="200" 
+                                 MaxHeight="220" 
                                  Width="{Binding ActualWidth, ElementName=CommandInput}"
                                  Focusable="True"
                                  KeyboardNavigation.DirectionalNavigation="Contained"
+                                 SelectionChanged="SuggestionList_SelectionChanged"
                                  PreviewKeyDown="SuggestionList_PreviewKeyDown"
                                  AutomationProperties.Name="Command Suggestions"
                                  AutomationProperties.HelpText="Use Arrow Keys to navigate, Enter to select, Escape to cancel.">
@@ -238,10 +249,24 @@
                                 <Style TargetType="ListBoxItem">
                                     <Setter Property="Padding" Value="5,2"/>
                                     <Setter Property="Cursor" Value="Hand"/>
+                                    <Setter Property="Focusable" Value="True"/>
+                                    <Setter Property="AutomationProperties.Name" Value="{Binding ListItemText}"/>
                                     <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
                                     <EventSetter Event="MouseLeftButtonUp" Handler="SuggestionList_MouseLeftButtonUp"/>
                                 </Style>
                             </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="3,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding ListItemText}" Foreground="#FFFFFF" FontWeight="SemiBold" />
+                                        <TextBlock Grid.Column="1" Text="{Binding ResultType}" Foreground="#888888" FontSize="11" Margin="8,0,0,0" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
                         </ListBox>
                     </Border>
                 </Popup>

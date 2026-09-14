@@ -43,42 +43,44 @@ namespace NexusShell.App.Views
 
             // Accessibility: speak re-read requests (Insert+B) via UI Automation.
             _viewModel.AnnounceAccessibilityRequested += OnAnnounceAccessibility;
+            NexusShell.App.Services.ScreenReaderAnnouncer.AnnouncementRequested += OnAnnounceAccessibility;
 
             this.Loaded += MainWindow_Loaded;
             this.Closed += MainWindow_Closed;
         }
 
-        private bool _announceToggle;
-
         /// <summary>
-        /// Handles an accessibility re-read request (Ctrl+Shift+R). When the interactive
-        /// overlay is open, re-reads its title by moving keyboard focus to it — the same
-        /// reliable path that reads it on open, and freeze-safe. Otherwise announces a short
-        /// status through a tiny isolated live region.
+        /// Handles an accessibility announcement via UI Automation Notification event (freeze-safe, 0 blank artifacts).
         /// </summary>
         private void OnAnnounceAccessibility(string text)
         {
+            if (string.IsNullOrWhiteSpace(text)) return;
+
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 try
                 {
-                    // Interactive overlay open → re-read its title via focus. Freeze-safe:
-                    // focusing one TextBlock never walks the large AvalonEdit UIA subtree
-                    // (raising UIA events on the focused element/terminal previously hung
-                    // the UI thread).
-                    if (_viewModel.IsInteractiveScreenActive)
-                    {
-                        Serilog.Log.Information("ReadScreen: interactive screen is active.");
-                        return;
-                    }
+                    if (_viewModel.IsInteractiveScreenActive) return;
 
-                    // No overlay → announce the short status through the isolated live region.
-                    if (string.IsNullOrWhiteSpace(text)) return;
-                    _announceToggle = !_announceToggle;
-                    ScreenReaderAnnouncer.Text = _announceToggle ? text : text + "​";
-                    var peer = UIElementAutomationPeer.FromElement(ScreenReaderAnnouncer)
-                               ?? UIElementAutomationPeer.CreatePeerForElement(ScreenReaderAnnouncer);
-                    peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+                    var peer = UIElementAutomationPeer.FromElement(this) 
+                               ?? UIElementAutomationPeer.CreatePeerForElement(this);
+                    
+                    if (peer != null)
+                    {
+                        peer.RaiseNotificationEvent(
+                            AutomationNotificationKind.ActionCompleted,
+                            AutomationNotificationProcessing.ImportantMostRecent,
+                            text,
+                            "Announcement"
+                        );
+                    }
+                    else
+                    {
+                        ScreenReaderAnnouncer.Text = text;
+                        var tbPeer = UIElementAutomationPeer.FromElement(ScreenReaderAnnouncer)
+                                   ?? UIElementAutomationPeer.CreatePeerForElement(ScreenReaderAnnouncer);
+                        tbPeer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -162,32 +164,155 @@ namespace NexusShell.App.Views
 
         private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
         {
-            // ── Command input + suggestion list (unchanged logic) ──────────────
+            // ── Universal Terminal Input Streaming ───────────────────────────────
             if (e.OriginalSource == CommandInput)
             {
-                if (_viewModel.IsSuggestionsOpen)
+                var tab = _viewModel.SelectedTab;
+                if (tab != null && tab.IsCommandRunning)
                 {
-                    if (e.Key == Key.Down)
+                    // While an interactive command / AI CLI agent is running:
+                    if (e.Key == Key.Enter || e.Key == Key.Return)
                     {
                         e.Handled = true;
-                        var list = (ListBox)this.FindName("SuggestionList");
-                        if (list != null && list.Items.Count > 0)
-                        {
-                            // Move focus to the list for accessibility (Screen Readers read the item)
-                            list.Focus();
-                            list.SelectedIndex = 0;
-
-                            // Ensure the ItemContainer is focused so NVDA/JAWS reads it
-                            var item = list.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem;
-                            item?.Focus();
-                        }
+                        tab.SendRawInput(new byte[] { 0x0D });
+                        CommandInput.Clear();
+                        return;
+                    }
+                    else if (e.Key == Key.Tab)
+                    {
+                        e.Handled = true;
+                        tab.SendRawInput(new byte[] { 0x09 });
+                        return;
+                    }
+                    else if (e.Key == Key.Back)
+                    {
+                        tab.SendRawInput(new byte[] { 0x08 });
+                        return;
+                    }
+                    else if (e.Key == Key.Space)
+                    {
+                        tab.SendRawInput(new byte[] { 0x20 });
+                        return;
+                    }
+                    else if (e.Key == Key.Left)
+                    {
+                        tab.SendRawInput(System.Text.Encoding.ASCII.GetBytes("\x1b[D"));
+                        return;
+                    }
+                    else if (e.Key == Key.Right)
+                    {
+                        tab.SendRawInput(System.Text.Encoding.ASCII.GetBytes("\x1b[C"));
+                        return;
+                    }
+                    else if (e.Key == Key.Up)
+                    {
+                        e.Handled = true;
+                        tab.SendRawInput(System.Text.Encoding.ASCII.GetBytes("\x1b[A"));
+                        return;
+                    }
+                    else if (e.Key == Key.Down)
+                    {
+                        e.Handled = true;
+                        tab.SendRawInput(System.Text.Encoding.ASCII.GetBytes("\x1b[B"));
                         return;
                     }
                     else if (e.Key == Key.Escape)
                     {
                         e.Handled = true;
-                        _viewModel.IsSuggestionsOpen = false;
+                        tab.SendRawInput(new byte[] { 0x1B });
+                        CommandInput.Clear();
                         return;
+                    }
+                    else if (e.Key == Key.C && Keyboard.Modifiers == ModifierKeys.Control)
+                    {
+                        e.Handled = true;
+                        tab.SendRawInput(new byte[] { 0x03 });
+                        CommandInput.Clear();
+                        return;
+                    }
+                }
+                else
+                {
+                    // ── Idle Shell Prompt with Authentic Dynamic PowerShell Completions ──
+                    if (_viewModel.IsSuggestionsOpen && _viewModel.Suggestions.Count > 0)
+                    {
+                        if (e.Key == Key.Down)
+                        {
+                            e.Handled = true;
+                            int idx = _viewModel.SelectedSuggestion != null ? _viewModel.Suggestions.IndexOf(_viewModel.SelectedSuggestion) : -1;
+                            idx = (idx + 1) % _viewModel.Suggestions.Count;
+                            var item = _viewModel.Suggestions[idx];
+                            _viewModel.SelectedSuggestion = item;
+                            _viewModel.ScreenReaderAnnouncer.Announce($"{item.ListItemText}، {idx + 1} من {_viewModel.Suggestions.Count}");
+                            SuggestionList.SelectedIndex = idx;
+                            SuggestionList.ScrollIntoView(item);
+                            return;
+                        }
+                        else if (e.Key == Key.Up)
+                        {
+                            e.Handled = true;
+                            int idx = _viewModel.SelectedSuggestion != null ? _viewModel.Suggestions.IndexOf(_viewModel.SelectedSuggestion) : 0;
+                            idx = (idx - 1 + _viewModel.Suggestions.Count) % _viewModel.Suggestions.Count;
+                            var item = _viewModel.Suggestions[idx];
+                            _viewModel.SelectedSuggestion = item;
+                            _viewModel.ScreenReaderAnnouncer.Announce($"{item.ListItemText}، {idx + 1} من {_viewModel.Suggestions.Count}");
+                            SuggestionList.SelectedIndex = idx;
+                            SuggestionList.ScrollIntoView(item);
+                            return;
+                        }
+                        else if (e.Key == Key.Tab || e.Key == Key.Enter || e.Key == Key.Return)
+                        {
+                            e.Handled = true;
+                            _viewModel.ApplySelectedSuggestion(_viewModel.SelectedSuggestion);
+                            CommandInput.CaretIndex = CommandInput.Text.Length;
+                            return;
+                        }
+                        else if (e.Key == Key.Escape)
+                        {
+                            e.Handled = true;
+                            _viewModel.IsSuggestionsOpen = false;
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        // At the idle shell prompt: Enter sends command on a SINGLE press
+                        if (e.Key == Key.Enter || e.Key == Key.Return)
+                        {
+                            if (_viewModel.SendCommand.CanExecute(null))
+                            {
+                                e.Handled = true;
+                                _viewModel.SendCommand.Execute(null);
+                                return;
+                            }
+                        }
+                        else if (e.Key == Key.Tab)
+                        {
+                            // Trigger completion query explicitly on Tab
+                            e.Handled = true;
+                            _viewModel.OnCommandInputChanged(CommandInput.Text, CommandInput.CaretIndex);
+                            return;
+                        }
+                        else if (e.Key == Key.Up)
+                        {
+                            if (_viewModel.PreviousCommand.CanExecute(null))
+                            {
+                                e.Handled = true;
+                                _viewModel.PreviousCommand.Execute(null);
+                                CommandInput.CaretIndex = CommandInput.Text.Length;
+                                return;
+                            }
+                        }
+                        else if (e.Key == Key.Down)
+                        {
+                            if (_viewModel.NextCommand.CanExecute(null))
+                            {
+                                e.Handled = true;
+                                _viewModel.NextCommand.Execute(null);
+                                CommandInput.CaretIndex = CommandInput.Text.Length;
+                                return;
+                            }
+                        }
                     }
                 }
             }
@@ -198,12 +323,10 @@ namespace NexusShell.App.Views
                 e.Handled = true;
                 if (CommandInput.IsFocused)
                 {
-                    // Move focus to the first focusable element in the window content
                     CommandInput.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
                 }
                 else
                 {
-                    // Move to Input
                     CommandInput.Focus();
                 }
             }
@@ -212,19 +335,35 @@ namespace NexusShell.App.Views
             {
                 if (!CommandInput.IsFocused)
                 {
-                    // If suggestions are open and focused, do NOT grab focus here
-                    // (let SuggestionList_PreviewKeyDown handle it naturally first)
-                    // But if we are somewhere else (like terminal), grab it.
-                    var list = (ListBox)this.FindName("SuggestionList");
-                    if (list == null || !list.IsKeyboardFocusWithin)
-                    {
-                        CommandInput.Focus();
-                        e.Handled = true;
-                    }
+                    CommandInput.Focus();
+                    e.Handled = true;
                 }
             }
         }
 
+        private void CommandInput_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_viewModel.SelectedTab?.IsCommandRunning == true)
+            {
+                _viewModel.IsSuggestionsOpen = false;
+                return;
+            }
+            _viewModel.OnCommandInputChanged(CommandInput.Text, CommandInput.CaretIndex);
+        }
+
+        private void CommandInput_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            // When an interactive tool / agent is running, stream characters directly to child process
+            if (!string.IsNullOrEmpty(e.Text) && _viewModel.SelectedTab?.IsCommandRunning == true)
+            {
+                _viewModel.SelectedTab.SendRawString(e.Text);
+            }
+        }
+
+        private void SuggestionList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            // Announcement is handled cleanly on Up/Down navigation
+        }
 
         private void SuggestionList_PreviewKeyDown(object sender, KeyEventArgs e)
         {
@@ -233,7 +372,7 @@ namespace NexusShell.App.Views
                 e.Handled = true;
                 if (_viewModel.SelectedSuggestion != null)
                 {
-                    _viewModel.ApplySuggestion(_viewModel.SelectedSuggestion);
+                    _viewModel.ApplySelectedSuggestion(_viewModel.SelectedSuggestion);
                     CommandInput.Focus();
                     CommandInput.CaretIndex = CommandInput.Text.Length;
                 }
@@ -245,13 +384,24 @@ namespace NexusShell.App.Views
                 CommandInput.Focus();
                 CommandInput.CaretIndex = CommandInput.Text.Length;
             }
+            else if (e.Key == Key.Up && SuggestionList.SelectedIndex == 0)
+            {
+                e.Handled = true;
+                CommandInput.Focus();
+                CommandInput.CaretIndex = CommandInput.Text.Length;
+            }
+            else if (e.Key != Key.Down && e.Key != Key.Up && e.Key != Key.PageDown && e.Key != Key.PageUp && e.Key != Key.Home && e.Key != Key.End)
+            {
+                // If user types normal keys, return focus to CommandInput
+                CommandInput.Focus();
+            }
         }
 
         private void SuggestionList_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
             if (_viewModel.SelectedSuggestion != null)
             {
-                _viewModel.ApplySuggestion(_viewModel.SelectedSuggestion);
+                _viewModel.ApplySelectedSuggestion(_viewModel.SelectedSuggestion);
                 CommandInput.Focus();
                 CommandInput.CaretIndex = CommandInput.Text.Length;
             }
