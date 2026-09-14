@@ -85,3 +85,12 @@ jobs:
             output/NexusShell_Silent_Setup.exe
             output/NexusShell_Silent_Setup.exe.sha256
           generate_release_notes: true
+
+      - name: Publish to Windows Package Manager (winget)
+        if: ${{ startsWith(github.ref, 'refs/tags/') && secrets.WINGET_TOKEN != '' }}
+        uses: vedantmgoyal2009/winget-releaser@v2
+        continue-on-error: true
+        with:
+          identifier: MF.NexusShell
+          installers-regex: 'NexusShell_Silent_Setup\.exe$'
+          token: ${{ secrets.WINGET_TOKEN }}
