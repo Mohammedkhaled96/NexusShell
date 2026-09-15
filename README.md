@@ -123,6 +123,7 @@ dotnet NexusShell.App\bin\Release\net10.0-windows10.0.19041.0\NexusShell.App.dll
 | **CodeQL** | push, pull request, weekly | Security analysis of C# and JavaScript |
 | **Security** | push, pull request | TruffleHog secret scan, vulnerable NuGet check, dependency review |
 | **Release** | `v*` tag | Self-contained win-x64 build, zip + SHA256 attached to the GitHub release |
+| **Publish to WinGet** | release published | Opens a pull request on `microsoft/winget-pkgs` updating `MF.NexusShell` with `NexusShell_Silent_Setup.exe` |
 
 Dependabot keeps NuGet packages and GitHub Actions up to date.
 
