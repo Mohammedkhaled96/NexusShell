@@ -104,6 +104,30 @@ dotnet build NexusShell.sln -c Release
 dotnet NexusShell.App\bin\Release\net10.0-windows10.0.19041.0\NexusShell.App.dll
 ```
 
+### One-command environment setup
+
+On a fresh machine, let WinGet install the SDK, WebView2 Runtime and Git for you
+(run in an elevated terminal from the repository root):
+
+```powershell
+winget configure .\.configurations\configuration.dsc.yaml
+```
+
+### Everyone builds the same bits
+
+A desktop app cannot run in a container, so reproducibility is enforced by the
+build instead — the same packages and compiler settings on every machine:
+
+| File | What it pins |
+|---|---|
+| `global.json` | The .NET SDK version, so a different SDK fails fast instead of building differently |
+| `NexusShell.App/packages.lock.json` | The full resolved NuGet graph, including transitive packages |
+| `Directory.Build.props` | Deterministic builds, warnings as errors, NuGet vulnerability auditing |
+| `NuGet.config` | nuget.org only, so a private or local feed cannot alter a restore |
+
+After changing a `PackageReference`, commit the updated `packages.lock.json`
+alongside it. CI restores with `--locked-mode` and fails if the two disagree.
+
 ### Project layout
 
 | Path | Purpose |

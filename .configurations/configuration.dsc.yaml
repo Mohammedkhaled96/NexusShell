@@ -1,0 +1,47 @@
+# NexusShell development environment
+#
+# Sets up everything needed to build and run NexusShell on a clean Windows
+# machine. Run from the repository root in an elevated terminal:
+#
+#     winget configure .\.configurations\configuration.dsc.yaml
+#
+# yaml-language-server: $schema=https://aka.ms/configuration-dsc-schema/0.2
+
+properties:
+  configurationVersion: 0.2.0
+
+  assertions:
+    - resource: Microsoft.Windows.Developer/OsVersion
+      directives:
+        description: Windows 10 1903 (build 18362) or newer is required
+        allowPrerelease: true
+      settings:
+        MinVersion: '10.0.18362'
+
+  resources:
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: dotnetSdk
+      directives:
+        description: Install the .NET 10 SDK (matches global.json)
+        allowPrerelease: true
+      settings:
+        id: Microsoft.DotNet.SDK.10
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: webView2
+      directives:
+        description: Install the Evergreen WebView2 Runtime (terminal renderer)
+        allowPrerelease: true
+      settings:
+        id: Microsoft.EdgeWebView2Runtime
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: git
+      directives:
+        description: Install Git
+        allowPrerelease: true
+      settings:
+        id: Git.Git
+        source: winget

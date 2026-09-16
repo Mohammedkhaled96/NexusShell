@@ -1,0 +1,28 @@
+<Project>
+
+  <!-- Build settings shared by every project in the solution, so all
+       developers and CI compile the code the same way. -->
+  <PropertyGroup>
+    <!-- Record the full resolved dependency graph in packages.lock.json.
+         CI restores in locked mode, which fails if package versions drift. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+
+    <!-- Same source produces the same binary on every machine. -->
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <!-- AGENT.md requires 0 warnings, 0 errors: make that automatic.
+         NuGet audit findings (NU1901 to NU1904) stay warnings so a newly
+         published advisory cannot break an unrelated build; the Security
+         workflow fails on those instead. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsNotAsErrors>NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+
+    <!-- Warn about known-vulnerable direct and transitive packages. -->
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+</Project>
