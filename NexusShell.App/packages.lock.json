@@ -162,6 +162,26 @@
           "Serilog": "4.2.0"
         }
       },
+      "System.Management.Automation": {
+        "type": "Direct",
+        "requested": "[7.4.6, )",
+        "resolved": "7.4.6",
+        "contentHash": "RxrDUOJuLC7Sd2RaUHf52ujP5VpdfSVTv75nwgEVAROCfYV4IcSd5mL4mLrKa+6LjkXGli7aUs853UyCwidl1A==",
+        "dependencies": {
+          "Microsoft.ApplicationInsights": "2.21.0",
+          "Microsoft.Management.Infrastructure": "3.0.0",
+          "Microsoft.PowerShell.CoreCLR.Eventing": "7.4.6",
+          "Microsoft.PowerShell.Native": "7.4.0",
+          "Microsoft.Security.Extensions": "1.2.0",
+          "Newtonsoft.Json": "13.0.3",
+          "System.Management": "8.0.0"
+        }
+      },
+      "Microsoft.ApplicationInsights": {
+        "type": "Transitive",
+        "resolved": "2.21.0",
+        "contentHash": "btZEDWAFNo9CoYliMCriSMTX3ruRGZTtYw4mo2XyyfLlowFicYVM2Xszi5evDG95QRYV7MbbH3D2RqVwfZlJHw=="
+      },
       "Microsoft.Extensions.AmbientMetadata.Application": {
         "type": "Transitive",
         "resolved": "10.6.0",
@@ -483,6 +503,40 @@
           "Microsoft.Extensions.Options": "10.0.8"
         }
       },
+      "Microsoft.Management.Infrastructure": {
+        "type": "Transitive",
+        "resolved": "3.0.0",
+        "contentHash": "cGZi0q5IujCTVYKo9h22Pw+UwfZDV82HXO8HTxMG2HqntPlT3Ls8jY6punLp4YzCypJNpfCAu2kae3TIyuAiJw==",
+        "dependencies": {
+          "Microsoft.Management.Infrastructure.Runtime.Unix": "3.0.0",
+          "Microsoft.Management.Infrastructure.Runtime.Win": "3.0.0"
+        }
+      },
+      "Microsoft.Management.Infrastructure.Runtime.Unix": {
+        "type": "Transitive",
+        "resolved": "3.0.0",
+        "contentHash": "QZE3uEDvZ0m7LabQvcmNOYHp7v1QPBVMpB/ild0WEE8zqUVAP5y9rRI5we37ImI1bQmW5pZ+3HNC70POPm0jBQ=="
+      },
+      "Microsoft.Management.Infrastructure.Runtime.Win": {
+        "type": "Transitive",
+        "resolved": "3.0.0",
+        "contentHash": "uwMyWN33+iQ8Wm/n1yoPXgFoiYNd0HzJyoqSVhaQZyJfaQrJR3udgcIHjqa1qbc3lS6kvfuUMN4TrF4U4refCQ=="
+      },
+      "Microsoft.PowerShell.CoreCLR.Eventing": {
+        "type": "Transitive",
+        "resolved": "7.4.6",
+        "contentHash": "z8XYESoGwJYT/L60192dE+n1dS7HRvbh2VinadhD3/zA6fDC/lu0VhQc42c56K4JiIMsLfHUUtaPJEa1JPaNBg=="
+      },
+      "Microsoft.PowerShell.Native": {
+        "type": "Transitive",
+        "resolved": "7.4.0",
+        "contentHash": "FlaJ3JBWhqFToYT0ycMb/Xxzoof7oTQbNyI4UikgubC7AMWt5ptBNKjIAMPvOcvEHr+ohaO9GvRWp3tiyS3sKw=="
+      },
+      "Microsoft.Security.Extensions": {
+        "type": "Transitive",
+        "resolved": "1.2.0",
+        "contentHash": "GjHZBE5PHKrxPRyGujWQKwbKNjPQYds6HcAWKeV49X3KPgBfF2B1vV5uJey5UluyGQlvAO/DezL7WzEx9HlPQA=="
+      },
       "Microsoft.Windows.SDK.Win32Docs": {
         "type": "Transitive",
         "resolved": "0.1.42-alpha",
@@ -538,6 +592,11 @@
           "Microsoft.Extensions.Logging": "10.0.0",
           "Serilog": "4.2.0"
         }
+      },
+      "System.Management": {
+        "type": "Transitive",
+        "resolved": "8.0.0",
+        "contentHash": "jrK22i5LRzxZCfGb+tGmke2VH7oE0DvcDlJ1HAKYU8cPmD8XnpUT0bYn2Gy98GEhGjtfbR/sxKTVb+dE770pfA=="
       },
       "System.Threading.RateLimiting": {
         "type": "Transitive",
