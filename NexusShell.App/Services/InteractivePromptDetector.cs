@@ -32,8 +32,8 @@ namespace NexusShell.App.Services
 
         /// <summary>Matches a Windows / PowerShell shell prompt at end of output.</summary>
         private static readonly Regex ShellPrompt = new(
-            @"(?:PS\s+)?[A-Za-z]:\\.{0,200}>\s*$",
-            RegexOptions.Compiled | RegexOptions.Multiline);
+            @"(?:(?:\([^\)]+\)\s*)?(?:PS\s+)?[A-Za-z]:\\(?:[\s\S]{0,400})|PS\s*)>\s*$",
+            RegexOptions.Compiled);
 
         /// <summary>Matches a numbered item: "1. text", "1) text", "1: text", "1- text".</summary>
         private static readonly Regex NumberedItem = new(

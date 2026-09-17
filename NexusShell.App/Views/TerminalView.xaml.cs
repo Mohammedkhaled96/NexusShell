@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using Microsoft.Web.WebView2.Core;
 using NexusShell.App.ViewModels;
 
@@ -17,7 +18,7 @@ namespace NexusShell.App.Views
     public partial class TerminalView : UserControl
     {
         // C# → JS (first char): 'o' output, 'c' command-start, 'x' system, 'k' clear, 's' shell.
-        // JS → C# (first char): 'R' ready.
+        // JS → C# (first char): 'R' ready, 'f' focus input.
         private TerminalTabViewModel? _vm;
         private bool _coreReady;          // CoreWebView2 created
         private bool _pageReady;          // page reported 'R'
@@ -29,6 +30,23 @@ namespace NexusShell.App.Views
             InitializeComponent();
             Loaded += OnLoaded;
             DataContextChanged += OnDataContextChanged;
+            PreviewKeyDown += TerminalView_PreviewKeyDown;
+        }
+
+        private void TerminalView_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.F6 || e.Key == Key.Escape)
+            {
+                e.Handled = true;
+                var window = Window.GetWindow(this) as MainWindow ?? Application.Current.MainWindow as MainWindow;
+                window?.FocusCommandInput();
+            }
+        }
+
+        public void FocusTerminal()
+        {
+            WebTerminal.Focus();
+            Keyboard.Focus(WebTerminal);
         }
 
         private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -71,6 +89,7 @@ namespace NexusShell.App.Views
             {
                 oldVm.RawOutputReceived -= OnRawOutput;
                 oldVm.CommandStarted -= OnCommandStarted;
+                oldVm.CommandCompleted -= OnCommandCompleted;
                 oldVm.ClearScreenRequested -= OnClearScreen;
                 oldVm.InteractiveScreenService.ShowPromptRequested -= OnShowPromptRequested;
             }
@@ -91,6 +110,7 @@ namespace NexusShell.App.Views
 
                 vm.RawOutputReceived += OnRawOutput;
                 vm.CommandStarted += OnCommandStarted;
+                vm.CommandCompleted += OnCommandCompleted;
                 vm.ClearScreenRequested += OnClearScreen;
                 vm.InteractiveScreenService.ShowPromptRequested += OnShowPromptRequested;
             }
@@ -113,6 +133,8 @@ namespace NexusShell.App.Views
         }
 
         private void OnCommandStarted(string command) => Post('c', command ?? string.Empty);
+
+        private void OnCommandCompleted() => PostRaw("e");
 
         private void OnClearScreen() => PostRaw("k");
 
@@ -147,6 +169,14 @@ namespace NexusShell.App.Views
             {
                 var promptJson = msg.Substring(1);
                 _vm?.HandleJsPromptDetected(promptJson);
+            }
+            else if (msg[0] == 'f')   // focus command input requested (F6 / Escape)
+            {
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    var window = Window.GetWindow(this) as MainWindow ?? Application.Current.MainWindow as MainWindow;
+                    window?.FocusCommandInput();
+                }));
             }
         }
 

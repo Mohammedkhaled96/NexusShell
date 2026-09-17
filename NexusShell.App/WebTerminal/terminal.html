@@ -287,13 +287,23 @@
         addCopyButton(S.currentBlock);
         S.currentBlock = null;
         S.isSystemBlock = false;
+
+        var b = xterm.buffer.active;
+        S.commandStartLine = Math.max(b.baseY + b.cursorY, b.length - 1);
+
         announce('Command finished.');
       }
 
       // Resolve the live region (commandStartLine → cursor) from xterm's buffer
       // and mirror it into the current block's <pre> as clean text.
       function syncHtmlBlock() {
-        if (!S.currentBlock) createNewBlock('System Output', true);
+        if (!S.currentBlock) {
+          if (S.commandCounter === 0) {
+            createNewBlock('System Output', true);
+          } else {
+            return;
+          }
+        }
         var pre = S.currentBlock.querySelector('.command-output');
         if (!pre) return;
 
@@ -323,10 +333,19 @@
         // Finalize the block once a shell prompt has returned (debounced).
         var promptDetected = false;
         var scanStart = Math.max(start, end - 4);
-        for (var j = end; j >= scanStart; j--) {
-          var t = buffer.getLine(j) ? buffer.getLine(j).translateToString(true) : '';
-          if (detectPromptReturned(t, S.shellCmd)) { promptDetected = true; break; }
+        var recentLines = [];
+        for (var j = scanStart; j <= end; j++) {
+          var lineObj = buffer.getLine(j);
+          if (lineObj) {
+            var str = lineObj.translateToString(true).trim();
+            if (str) recentLines.push(str);
+            if (detectPromptReturned(str, S.shellCmd)) { promptDetected = true; break; }
+          }
         }
+        if (!promptDetected && recentLines.length > 0) {
+          if (detectPromptReturned(recentLines.join(' '), S.shellCmd)) promptDetected = true;
+        }
+
         if (!S.commandLock && end > S.commandStartLine && promptDetected && !S.promptDebounceTimeout) {
           S.promptDebounceTimeout = setTimeout(function () {
             S.promptDebounceTimeout = null;
@@ -334,9 +353,17 @@
             var cEnd = Math.max(b.baseY + b.cursorY, b.length - 1);
             var cStart = Math.max(0, S.commandStartLine);
             var still = false;
-            for (var k = cEnd; k >= Math.max(cStart, cEnd - 4); k--) {
-              var lt = b.getLine(k) ? b.getLine(k).translateToString(true) : '';
-              if (detectPromptReturned(lt, S.shellCmd)) { still = true; break; }
+            var checkLines = [];
+            for (var k = Math.max(cStart, cEnd - 4); k <= cEnd; k++) {
+              var lObj = b.getLine(k);
+              if (lObj) {
+                var lstr = lObj.translateToString(true).trim();
+                if (lstr) checkLines.push(lstr);
+                if (detectPromptReturned(lstr, S.shellCmd)) { still = true; break; }
+              }
+            }
+            if (!still && checkLines.length > 0) {
+              if (detectPromptReturned(checkLines.join(' '), S.shellCmd)) still = true;
             }
             if (still) finalizeCurrentBlock();
           }, 400);
@@ -441,8 +468,6 @@
           clearTimeout(S.interactivePromptTimeout);
           S.interactivePromptTimeout = null;
         }
-        // While a user command is live, treat further input as interactive (no new block).
-        if (S.currentBlock && !S.isSystemBlock) return;
         if (S.currentBlock) finalizeCurrentBlock();
 
         var buffer = xterm.buffer.active;
@@ -487,9 +512,9 @@
       function detectPromptReturned(data, shellCmd) {
         var clean = (data || '').trim();
         if (!clean) return false;
-        return /PS [A-Z]:\\[^>]*>$/i.test(clean) ||
-               /PS >$/i.test(clean) ||
-               /[A-Z]:\\[^>]*>$/i.test(clean) ||
+        return /(?:(?:\([^\)]+\)\s*)?(?:PS\s+)?[A-Za-z]:\\[\s\S]*|PS\s*)>$/i.test(clean) ||
+               /^PS\s*>/i.test(clean) ||
+               (clean.endsWith('>') && (clean.includes(':\\') || clean.includes('PS ') || clean.includes('PS>'))) ||
                /[\w\-]+@[\w\-]+:.*[\$\#]\s*$/i.test(clean);
       }
 
@@ -507,6 +532,7 @@
           switch (kind) {
             case 'o': handleOutput(body); break;
             case 'c': startCommand(body); break;
+            case 'e': case 'd': finalizeCurrentBlock(); break;
             case 'x': addOutputBlock('System', body); break;
             case 'k': clearAll(); break;
             case 's': if (body) S.shellCmd = body; break;
@@ -515,6 +541,22 @@
         });
         wv.postMessage('R'); // ready → host flushes buffered output
       }
+
+      // Global F6 / Escape keyboard navigation: returns focus to WPF Command Input
+      window.addEventListener('keydown', function (e) {
+        if (e.key === 'F6' || e.keyCode === 117) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (wv) wv.postMessage('f');
+        } else if (e.key === 'Escape' || e.keyCode === 27) {
+          var dlg = document.getElementById('dlg-interactive');
+          if (!dlg || !dlg.open) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (wv) wv.postMessage('f');
+          }
+        }
+      }, true);
 
       var dlg = document.getElementById('dlg-interactive');
       var titleEl = document.getElementById('interactive-title');

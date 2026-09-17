@@ -97,6 +97,11 @@ namespace NexusShell.App.ViewModels
         /// </summary>
         public event Action<string>? CommandStarted;
 
+        /// <summary>
+        /// Fired when the active command finishes execution (prompt returned).
+        /// </summary>
+        public event Action? CommandCompleted;
+
         private string _currentCommand = string.Empty;
         public string CurrentCommand
         {
@@ -114,10 +119,10 @@ namespace NexusShell.App.ViewModels
         private bool _isFirstCommand = true;
 
         // Detects a Windows/PowerShell/CMD prompt at the end of a chunk,
-        // e.g. "PS C:\Users\mo> " or "C:\Windows\System32> "
+        // e.g. "PS C:\Users\mo> " or "C:\Windows\System32> " or wrapped multi-line prompt
         private static readonly Regex _promptDetect = new Regex(
-            @"(?:PS\s+)?[A-Za-z]:\\.{0,200}>\s*$",
-            RegexOptions.Compiled | RegexOptions.Multiline);
+            @"(?:(?:\([^\)]+\)\s*)?(?:PS\s+)?[A-Za-z]:\\(?:[\s\S]{0,400})|PS\s*)>\s*$",
+            RegexOptions.Compiled);
 
         private bool _isCommandRunning;
         /// <summary>True while a command is executing; false when idle at a shell prompt.</summary>
@@ -544,8 +549,13 @@ namespace NexusShell.App.ViewModels
             }
 
             // 4) Fast-path completion: a bare shell prompt means the command finished.
-            if (_isCommandRunning && !_terminal.HasChildProcesses() && _promptDetect.IsMatch(stripped))
-                Application.Current?.Dispatcher.BeginInvoke(() => MarkCommandCompleted());
+            if (_isCommandRunning && !_terminal.HasChildProcesses())
+            {
+                string tail;
+                lock (_rawTailLock) { tail = _rawTail.ToString(); }
+                if (_promptDetect.IsMatch(stripped) || LooksLikePrompt(tail))
+                    Application.Current?.Dispatcher.BeginInvoke(() => MarkCommandCompleted());
+            }
 
             // 5) Output tick (throttled in the service).
             _soundService.Play(AppSound.Output);
@@ -588,6 +598,7 @@ namespace NexusShell.App.ViewModels
             _idleTimer.Stop();
             _soundService.Play(AppSound.CommandCompleted);
             MaybeNotifyCommandCompleted(label, elapsed);
+            CommandCompleted?.Invoke();
         }
 
         /// <summary>True when the last non-blank line of <paramref name="tail"/> ends at a shell prompt.</summary>
@@ -595,25 +606,40 @@ namespace NexusShell.App.ViewModels
         {
             if (string.IsNullOrEmpty(tail)) return false;
 
-            int nl = tail.LastIndexOf('\n');
-            string lastLine = (nl >= 0 ? tail.Substring(nl + 1) : tail).TrimEnd();
-            if (lastLine.Length == 0) return false;
+            string cleanTail = tail.TrimEnd();
+            if (cleanTail.Length == 0) return false;
 
-            // Authentic PowerShell / CMD prompts end with > and contain drive/path
-            if (lastLine.EndsWith(">"))
+            // Authentic PowerShell / CMD prompts end with > and contain drive/path or PS marker
+            if (cleanTail.EndsWith(">"))
             {
-                return _promptDetect.IsMatch(lastLine);
+                string snippet = cleanTail.Length > 500 ? cleanTail.Substring(cleanTail.Length - 500) : cleanTail;
+                if (_promptDetect.IsMatch(snippet))
+                    return true;
+
+                int lastNl = cleanTail.LastIndexOf('\n');
+                string lastLine = (lastNl >= 0 ? cleanTail.Substring(lastNl + 1) : cleanTail).Trim();
+                if (lastLine.EndsWith(">") && lastLine.Length < 150 && !lastLine.Contains("<") &&
+                    !lastLine.Contains("=>") && !lastLine.Contains("->"))
+                {
+                    if (snippet.Contains(":\\") || snippet.Contains("PS ") || snippet.Contains("PS>"))
+                        return true;
+                }
             }
 
             // POSIX shells (bash/zsh/wsl). Require a plausible prompt char before the
             // sigil so a lone '$'/'#' in program output is far less likely to match.
-            char last = lastLine[lastLine.Length - 1];
-            if (last == '$' || last == '#' || last == '%')
+            int nl = cleanTail.LastIndexOf('\n');
+            string finalLine = (nl >= 0 ? cleanTail.Substring(nl + 1) : cleanTail).TrimEnd();
+            if (finalLine.Length > 0)
             {
-                if (lastLine.Length < 2) return false;
-                char prev = lastLine[lastLine.Length - 2];
-                return prev == ' ' || prev == '~' || prev == '/' || prev == ')' ||
-                       prev == ']' || char.IsLetterOrDigit(prev);
+                char last = finalLine[finalLine.Length - 1];
+                if (last == '$' || last == '#' || last == '%')
+                {
+                    if (finalLine.Length < 2) return false;
+                    char prev = finalLine[finalLine.Length - 2];
+                    return prev == ' ' || prev == '~' || prev == '/' || prev == ')' ||
+                           prev == ']' || char.IsLetterOrDigit(prev);
+                }
             }
             return false;
         }

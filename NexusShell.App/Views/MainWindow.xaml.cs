@@ -8,6 +8,7 @@ using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 
 namespace NexusShell.App.Views
 {
@@ -323,11 +324,11 @@ namespace NexusShell.App.Views
                 e.Handled = true;
                 if (CommandInput.IsFocused)
                 {
-                    CommandInput.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+                    FocusTerminalOutput();
                 }
                 else
                 {
-                    CommandInput.Focus();
+                    FocusCommandInput();
                 }
             }
             // Esc to jump to Input if not already there (Global shortcut)
@@ -335,10 +336,46 @@ namespace NexusShell.App.Views
             {
                 if (!CommandInput.IsFocused)
                 {
-                    CommandInput.Focus();
+                    FocusCommandInput();
                     e.Handled = true;
                 }
             }
+        }
+
+        public void FocusCommandInput()
+        {
+            CommandInput.Focus();
+            Keyboard.Focus(CommandInput);
+            CommandInput.CaretIndex = CommandInput.Text.Length;
+        }
+
+        public void FocusTerminalOutput()
+        {
+            var terminalView = FindVisualChild<TerminalView>(TerminalHost);
+            if (terminalView != null)
+            {
+                terminalView.FocusTerminal();
+            }
+            else
+            {
+                CommandInput.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+            }
+        }
+
+        private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+        {
+            if (parent == null) return null;
+            int count = VisualTreeHelper.GetChildrenCount(parent);
+            for (int i = 0; i < count; i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T typedChild)
+                    return typedChild;
+                var childOfChild = FindVisualChild<T>(child);
+                if (childOfChild != null)
+                    return childOfChild;
+            }
+            return null;
         }
 
         private void CommandInput_TextChanged(object sender, TextChangedEventArgs e)
