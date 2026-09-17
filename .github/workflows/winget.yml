@@ -1,0 +1,47 @@
+name: Publish to WinGet
+
+# Opens a pull request on microsoft/winget-pkgs updating MF.NexusShell whenever
+# a release is published. Requires the WINGET_TOKEN repository secret (classic
+# PAT with public_repo) and a fork of microsoft/winget-pkgs under the owner.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to submit (for example v4.0.1)
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: winget-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Submit MF.NexusShell to winget-pkgs
+    # Pre-releases never go to WinGet; manual runs are always allowed.
+    if: github.event_name == 'workflow_dispatch' || !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check WINGET_TOKEN secret
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          if [ -z "$WINGET_TOKEN" ]; then
+            echo "::error::Add the WINGET_TOKEN repository secret (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+
+      - name: Submit manifest update
+        uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: MF.NexusShell
+          # Same installer the published manifests use (silent Inno Setup build)
+          installers-regex: 'NexusShell_Silent_Setup\.exe$'
+          release-tag: ${{ github.event.release.tag_name || inputs.tag }}
+          fork-user: Mohammedkhaled96
+          token: ${{ secrets.WINGET_TOKEN }}
