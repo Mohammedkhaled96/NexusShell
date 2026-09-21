@@ -47,6 +47,15 @@ namespace NexusShell.App.Views
         {
             WebTerminal.Focus();
             Keyboard.Focus(WebTerminal);
+            if (_coreReady && WebTerminal.CoreWebView2 != null)
+            {
+                try
+                {
+                    WebTerminal.CoreWebView2.ExecuteScriptAsync(
+                        "var block = document.querySelector('.command-block:last-child .command-output') || document.body; if (block) block.focus();");
+                }
+                catch { }
+            }
         }
 
         private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -171,6 +180,24 @@ namespace NexusShell.App.Views
 
             if (msg[0] == 'R')   // page ready → flush buffered output
                 FlushPending();
+            else if (msg[0] == 'a') // Real-time TUI item announcement
+            {
+                var payload = msg.Substring(1);
+                if (payload.StartsWith("[chk:1]"))
+                {
+                    var itemName = payload.Substring(7);
+                    NexusShell.App.Services.ScreenReaderAnnouncer.AnnounceCheckbox(itemName, true);
+                }
+                else if (payload.StartsWith("[chk:0]"))
+                {
+                    var itemName = payload.Substring(7);
+                    NexusShell.App.Services.ScreenReaderAnnouncer.AnnounceCheckbox(itemName, false);
+                }
+                else if (!string.IsNullOrWhiteSpace(payload))
+                {
+                    NexusShell.App.Services.ScreenReaderAnnouncer.Speak(payload);
+                }
+            }
             else if (msg[0] == 'i')   // interactive prompt result
             {
                 var resultJson = msg.Substring(1);

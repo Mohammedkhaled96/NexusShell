@@ -38,6 +38,7 @@ namespace NexusShell.App.Views
             // Apply defined shortcuts
             _viewModel.ApplyShortcuts(this);
             
+            CommandInput.PreviewKeyDown += CommandInput_PreviewKeyDown;
             this.PreviewKeyDown += MainWindow_PreviewKeyDown;
             
             _viewModel.PropertyChanged += ViewModel_PropertyChanged;
@@ -75,13 +76,11 @@ namespace NexusShell.App.Views
                             "Announcement"
                         );
                     }
-                    else
-                    {
-                        ScreenReaderAnnouncer.Text = text;
-                        var tbPeer = UIElementAutomationPeer.FromElement(ScreenReaderAnnouncer)
-                                   ?? UIElementAutomationPeer.CreatePeerForElement(ScreenReaderAnnouncer);
-                        tbPeer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
-                    }
+
+                    ScreenReaderAnnouncer.Text = text;
+                    var tbPeer = UIElementAutomationPeer.FromElement(ScreenReaderAnnouncer)
+                               ?? UIElementAutomationPeer.CreatePeerForElement(ScreenReaderAnnouncer);
+                    tbPeer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
                 }
                 catch (Exception ex)
                 {
@@ -163,10 +162,34 @@ namespace NexusShell.App.Views
             }
         }
 
+        private void CommandInput_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Tab)
+            {
+                e.Handled = true;
+                if (_viewModel.IsSuggestionsOpen && _viewModel.Suggestions.Count > 0 && _viewModel.SelectedSuggestion != null)
+                {
+                    _viewModel.ApplySelectedSuggestion(_viewModel.SelectedSuggestion);
+                    CommandInput.Text = _viewModel.CurrentCommand;
+                    CommandInput.CaretIndex = CommandInput.Text.Length;
+                }
+                else
+                {
+                    FocusTerminalOutput();
+                }
+            }
+        }
+
         private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
         {
             // ── Universal Terminal Input Streaming ───────────────────────────────
-            if (e.OriginalSource == CommandInput)
+            bool isFromCommandInput = e.Source == CommandInput || 
+                                      CommandInput.IsKeyboardFocusWithin || 
+                                      CommandInput.IsFocused ||
+                                      e.OriginalSource == CommandInput ||
+                                      (e.OriginalSource is DependencyObject dep && (dep == CommandInput || CommandInput.IsAncestorOf(dep)));
+
+            if (isFromCommandInput)
             {
                 var tab = _viewModel.SelectedTab;
                 if (tab != null && tab.IsCommandRunning)
@@ -360,15 +383,18 @@ namespace NexusShell.App.Views
 
         public void FocusTerminalOutput()
         {
-            var terminalView = FindVisualChild<TerminalView>(TerminalHost);
-            if (terminalView != null)
+            Dispatcher.BeginInvoke(new Action(() =>
             {
-                terminalView.FocusTerminal();
-            }
-            else
-            {
-                CommandInput.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
-            }
+                var terminalView = FindVisualChild<TerminalView>(TerminalHost);
+                if (terminalView != null)
+                {
+                    terminalView.FocusTerminal();
+                }
+                else
+                {
+                    CommandInput.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+                }
+            }));
         }
 
         private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
