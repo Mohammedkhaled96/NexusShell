@@ -131,7 +131,7 @@ namespace NexusShell.App.ViewModels
             CurrentCommand = prefix + item.CompletionText + suffix;
             IsSuggestionsOpen = false;
             SoundService.Play(AppSound.Notify);
-            _screenReaderAnnouncer.Announce($"إدراج: {item.CompletionText}");
+            _screenReaderAnnouncer.Announce($"Inserted: {item.CompletionText}");
         }
 
         public ObservableCollection<TerminalTabViewModel> Tabs { get; } = new ObservableCollection<TerminalTabViewModel>();
@@ -282,6 +282,7 @@ namespace NexusShell.App.ViewModels
                     {
                         _isUpdatingCurrentCommandFromCode = false;
                     }
+                    OnPropertyChanged(nameof(CurrentCommand));
                 }
             }
         }

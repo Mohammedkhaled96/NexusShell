@@ -182,7 +182,16 @@ namespace NexusShell.App.Views
                     else if (e.Key == Key.Tab)
                     {
                         e.Handled = true;
-                        tab.SendRawInput(new byte[] { 0x09 });
+                        if (_viewModel.IsSuggestionsOpen && _viewModel.Suggestions.Count > 0 && _viewModel.SelectedSuggestion != null)
+                        {
+                            _viewModel.ApplySelectedSuggestion(_viewModel.SelectedSuggestion);
+                            CommandInput.Text = _viewModel.CurrentCommand;
+                            CommandInput.CaretIndex = CommandInput.Text.Length;
+                        }
+                        else
+                        {
+                            FocusTerminalOutput();
+                        }
                         return;
                     }
                     else if (e.Key == Key.Back)
@@ -244,7 +253,7 @@ namespace NexusShell.App.Views
                             idx = (idx + 1) % _viewModel.Suggestions.Count;
                             var item = _viewModel.Suggestions[idx];
                             _viewModel.SelectedSuggestion = item;
-                            _viewModel.ScreenReaderAnnouncer.Announce($"{item.ListItemText}، {idx + 1} من {_viewModel.Suggestions.Count}");
+                            _viewModel.ScreenReaderAnnouncer.Announce($"{item.ListItemText}, {idx + 1} of {_viewModel.Suggestions.Count}");
                             SuggestionList.SelectedIndex = idx;
                             SuggestionList.ScrollIntoView(item);
                             return;
@@ -256,7 +265,7 @@ namespace NexusShell.App.Views
                             idx = (idx - 1 + _viewModel.Suggestions.Count) % _viewModel.Suggestions.Count;
                             var item = _viewModel.Suggestions[idx];
                             _viewModel.SelectedSuggestion = item;
-                            _viewModel.ScreenReaderAnnouncer.Announce($"{item.ListItemText}، {idx + 1} من {_viewModel.Suggestions.Count}");
+                            _viewModel.ScreenReaderAnnouncer.Announce($"{item.ListItemText}, {idx + 1} of {_viewModel.Suggestions.Count}");
                             SuggestionList.SelectedIndex = idx;
                             SuggestionList.ScrollIntoView(item);
                             return;
@@ -265,6 +274,7 @@ namespace NexusShell.App.Views
                         {
                             e.Handled = true;
                             _viewModel.ApplySelectedSuggestion(_viewModel.SelectedSuggestion);
+                            CommandInput.Text = _viewModel.CurrentCommand;
                             CommandInput.CaretIndex = CommandInput.Text.Length;
                             return;
                         }
@@ -289,9 +299,8 @@ namespace NexusShell.App.Views
                         }
                         else if (e.Key == Key.Tab)
                         {
-                            // Trigger completion query explicitly on Tab
                             e.Handled = true;
-                            _viewModel.OnCommandInputChanged(CommandInput.Text, CommandInput.CaretIndex);
+                            FocusTerminalOutput();
                             return;
                         }
                         else if (e.Key == Key.Up)
@@ -410,6 +419,7 @@ namespace NexusShell.App.Views
                 if (_viewModel.SelectedSuggestion != null)
                 {
                     _viewModel.ApplySelectedSuggestion(_viewModel.SelectedSuggestion);
+                    CommandInput.Text = _viewModel.CurrentCommand;
                     CommandInput.Focus();
                     CommandInput.CaretIndex = CommandInput.Text.Length;
                 }
@@ -439,6 +449,7 @@ namespace NexusShell.App.Views
             if (_viewModel.SelectedSuggestion != null)
             {
                 _viewModel.ApplySelectedSuggestion(_viewModel.SelectedSuggestion);
+                CommandInput.Text = _viewModel.CurrentCommand;
                 CommandInput.Focus();
                 CommandInput.CaretIndex = CommandInput.Text.Length;
             }

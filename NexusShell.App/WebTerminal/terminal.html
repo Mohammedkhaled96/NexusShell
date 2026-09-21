@@ -298,11 +298,7 @@
       // and mirror it into the current block's <pre> as clean text.
       function syncHtmlBlock() {
         if (!S.currentBlock) {
-          if (S.commandCounter === 0) {
-            createNewBlock('System Output', true);
-          } else {
-            return;
-          }
+          createNewBlock(S.commandCounter === 0 ? 'System Output' : 'Output', true);
         }
         var pre = S.currentBlock.querySelector('.command-output');
         if (!pre) return;
@@ -542,13 +538,20 @@
         wv.postMessage('R'); // ready → host flushes buffered output
       }
 
-      // Global F6 / Escape keyboard navigation: returns focus to WPF Command Input
+      // Global F6 / Escape / Shift+Tab keyboard navigation: returns focus to WPF Command Input
       window.addEventListener('keydown', function (e) {
         if (e.key === 'F6' || e.keyCode === 117) {
           e.preventDefault();
           e.stopPropagation();
           if (wv) wv.postMessage('f');
         } else if (e.key === 'Escape' || e.keyCode === 27) {
+          var dlg = document.getElementById('dlg-interactive');
+          if (!dlg || !dlg.open) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (wv) wv.postMessage('f');
+          }
+        } else if (e.key === 'Tab' && e.shiftKey) {
           var dlg = document.getElementById('dlg-interactive');
           if (!dlg || !dlg.open) {
             e.preventDefault();

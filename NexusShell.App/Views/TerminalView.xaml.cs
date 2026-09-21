@@ -35,7 +35,7 @@ namespace NexusShell.App.Views
 
         private void TerminalView_PreviewKeyDown(object sender, KeyEventArgs e)
         {
-            if (e.Key == Key.F6 || e.Key == Key.Escape)
+            if (e.Key == Key.F6 || e.Key == Key.Escape || (e.Key == Key.Tab && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift))
             {
                 e.Handled = true;
                 var window = Window.GetWindow(this) as MainWindow ?? Application.Current.MainWindow as MainWindow;
@@ -79,6 +79,7 @@ namespace NexusShell.App.Views
             }
             catch (Exception ex)
             {
+                Serilog.Log.Error(ex, "WebView2 initialization failed in TerminalView");
                 System.Diagnostics.Debug.WriteLine($"WebView2 init failed: {ex}");
             }
         }
@@ -97,7 +98,6 @@ namespace NexusShell.App.Views
             if (e.NewValue is TerminalTabViewModel vm)
             {
                 _vm = vm;
-                _pageReady = false;
                 lock (_pendingLock) { _pending.Clear(); }
 
                 // Snapshot scrollback BEFORE subscribing so live events arriving during
@@ -113,6 +113,11 @@ namespace NexusShell.App.Views
                 vm.CommandCompleted += OnCommandCompleted;
                 vm.ClearScreenRequested += OnClearScreen;
                 vm.InteractiveScreenService.ShowPromptRequested += OnShowPromptRequested;
+
+                if (_coreReady && WebTerminal.CoreWebView2 != null)
+                {
+                    FlushPending();
+                }
             }
             else
             {
@@ -126,6 +131,12 @@ namespace NexusShell.App.Views
             if (string.IsNullOrEmpty(data)) return;
             if (!_pageReady)
             {
+                if (_coreReady && WebTerminal.CoreWebView2 != null)
+                {
+                    FlushPending();
+                    Post('o', data);
+                    return;
+                }
                 lock (_pendingLock) { _pending.Append(data); }
                 return;
             }
