@@ -39,7 +39,7 @@
                    Width="1" Height="1" Opacity="0"
                    HorizontalAlignment="Left" VerticalAlignment="Top" />
 
-        <Menu Grid.Row="0" KeyboardNavigation.TabNavigation="None">
+        <Menu x:Name="MainMenu" Grid.Row="0" IsMainMenu="True" KeyboardNavigation.TabNavigation="None">
             <MenuItem Header="_File">
                 <MenuItem Header="_Open Script..." Command="{Binding OpenScriptCommand}" InputGestureText="Ctrl+O" />
                 <MenuItem Header="_Clear Terminal" Command="{Binding ClearTerminalCommand}" InputGestureText="Ctrl+L" />

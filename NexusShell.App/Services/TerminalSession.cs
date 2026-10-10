@@ -161,9 +161,6 @@ namespace NexusShell.App.Services
                 {
                     throw new IOException($"WriteFile (Newline) failed. Error: {Marshal.GetLastWin32Error()}");
                 }
-
-                // 3. Flush at the end
-                FlushFileBuffers(_hPipeInputWrite);
             }
             catch (Exception ex)
             {
@@ -184,7 +181,6 @@ namespace NexusShell.App.Services
                 {
                     throw new IOException($"WriteFile (RawInput) failed. Error: {Marshal.GetLastWin32Error()}");
                 }
-                FlushFileBuffers(_hPipeInputWrite);
             }
             catch (Exception ex)
             {
@@ -234,7 +230,14 @@ namespace NexusShell.App.Services
                     char[] chars = new char[charCount];
                     _utf8Decoder.GetChars(buffer, 0, bytesRead, chars, 0);
                     string content = new string(chars);
-                    OutputReceived?.Invoke(content);
+                    try
+                    {
+                        OutputReceived?.Invoke(content);
+                    }
+                    catch (Exception subEx)
+                    {
+                        _logger.LogError(subEx, "Error in OutputReceived subscriber.");
+                    }
                 }
                 catch (Exception ex) when (ex is ObjectDisposedException || ex is IOException)
                 {

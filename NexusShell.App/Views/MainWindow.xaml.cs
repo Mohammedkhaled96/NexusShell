@@ -111,10 +111,29 @@ namespace NexusShell.App.Views
         private IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
             const int WM_HOTKEY = 0x0312;
+            const int WM_SYSCOMMAND = 0x0112;
+            const int SC_KEYMENU = 0xF100;
+
             if (msg == WM_HOTKEY && wParam.ToInt32() == NativeMethods.QUAKE_HOTKEY_ID)
             {
                 ToggleQuakeVisibility();
                 handled = true;
+            }
+            else if (msg == WM_SYSCOMMAND && (wParam.ToInt32() & 0xFFF0) == SC_KEYMENU)
+            {
+                // When Alt key is pressed alone (lParam == 0) to invoke the menu bar,
+                // activate our WPF MainMenu rather than the Win32 system window menu.
+                if (lParam == IntPtr.Zero)
+                {
+                    handled = true;
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (MainMenu.Items.Count > 0 && MainMenu.Items[0] is MenuItem firstItem)
+                        {
+                            firstItem.Focus();
+                        }
+                    }));
+                }
             }
             return IntPtr.Zero;
         }
@@ -182,6 +201,16 @@ namespace NexusShell.App.Views
 
         private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
         {
+            // If the user is navigating the application menu bar, let WPF handle it natively (Up, Down, Left, Right, Enter, Esc).
+            bool isMenuNavigating = MainMenu.IsKeyboardFocusWithin || 
+                                    Keyboard.FocusedElement is MenuItem ||
+                                    (e.OriginalSource is DependencyObject origDep && (origDep is MenuItem || MainMenu.IsAncestorOf(origDep))) ||
+                                    (e.Source is DependencyObject srcDep && (srcDep is MenuItem || MainMenu.IsAncestorOf(srcDep)));
+            if (isMenuNavigating)
+            {
+                return;
+            }
+
             // ── Universal Terminal Input Streaming ───────────────────────────────
             bool isFromCommandInput = e.Source == CommandInput || 
                                       CommandInput.IsKeyboardFocusWithin || 
@@ -428,6 +457,7 @@ namespace NexusShell.App.Views
             // When an interactive tool / agent is running, stream characters directly to child process
             if (!string.IsNullOrEmpty(e.Text) && _viewModel.SelectedTab?.IsCommandRunning == true)
             {
+                e.Handled = true;
                 _viewModel.SelectedTab.SendRawString(e.Text);
             }
         }

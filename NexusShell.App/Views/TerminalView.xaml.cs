@@ -138,6 +138,13 @@ namespace NexusShell.App.Views
         private void OnRawOutput(string data)
         {
             if (string.IsNullOrEmpty(data)) return;
+
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(() => OnRawOutput(data)));
+                return;
+            }
+
             if (!_pageReady)
             {
                 if (_coreReady && WebTerminal.CoreWebView2 != null)
