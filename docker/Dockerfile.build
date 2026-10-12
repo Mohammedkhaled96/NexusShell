@@ -1,0 +1,46 @@
+# escape=`
+# ============================================================================
+#  NexusShell - build-from-source image (WINDOWS CONTAINERS ONLY)
+#
+#  WPF cannot be compiled on Linux: the Windows Desktop SDK is Windows-only.
+#  This image compiles NexusShell inside a Windows container, so a release can
+#  be reproduced without a developer machine. Switch Docker Desktop to Windows
+#  containers first, then:
+#
+#      docker compose --profile build build builder
+#      docker compose --profile build run --rm builder     # copies to .\out
+#
+#  The default (Linux) image is ../Dockerfile, which only carries an already
+#  published build.
+# ============================================================================
+ARG NEXUSSHELL_VERSION=4.1.1
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0-windowsservercore-ltsc2022 AS build
+SHELL ["powershell", "-NoLogo", "-NoProfile", "-Command", "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue';"]
+WORKDIR C:\src
+
+# Restore first: this layer is reused until a project file changes. global.json
+# pins the SDK and packages.lock.json pins every package, so the restore inside
+# the container resolves exactly what a developer gets.
+COPY NexusShell.sln global.json NuGet.config Directory.Build.props ./
+COPY NexusShell.App/NexusShell.App.csproj NexusShell.App/packages.lock.json NexusShell.App/
+RUN dotnet restore NexusShell.sln --locked-mode
+
+COPY . .
+RUN dotnet publish NexusShell.App/NexusShell.App.csproj -c Release -r win-x64 --self-contained true `
+        --no-restore -o C:\publish; `
+    if (-not (Test-Path 'C:\publish\NexusShell.App.exe')) { throw 'publish produced no executable' }
+
+# ---- runtime: a one-shot copy-out image ------------------------------------
+FROM mcr.microsoft.com/windows/servercore:ltsc2022
+ARG NEXUSSHELL_VERSION
+LABEL org.opencontainers.image.title="NexusShell (build)" `
+      org.opencontainers.image.description="Compiles NexusShell from source in a Windows container and copies the win-x64 build to C:\out." `
+      org.opencontainers.image.version="${NEXUSSHELL_VERSION}" `
+      org.opencontainers.image.source="https://github.com/Mohammedkhaled96/NexusShell" `
+      org.opencontainers.image.licenses="BSL-1.0"
+
+COPY --from=build C:\publish C:\publish
+WORKDIR C:\out
+# Mount a host directory at C:\out; xcopy /E /I /Y mirrors the build into it.
+ENTRYPOINT ["cmd", "/S", "/C", "xcopy C:\publish C:\out /E /I /Y /Q && echo Build copied to C:\out"]

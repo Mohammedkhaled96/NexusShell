@@ -27,7 +27,7 @@ services:
     # who just pulled the published image) never triggers a build.
     build:
       context: .
-      dockerfile: docker/Dockerfile
+      dockerfile: Dockerfile
       args:
         NEXUSSHELL_VERSION: ${NEXUSSHELL_VERSION:-4.1.1}
     command: ["extract"]
