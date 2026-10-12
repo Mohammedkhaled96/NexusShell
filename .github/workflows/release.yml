@@ -77,12 +77,45 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v3
         with:
+          name: "NexusShell ${{ github.ref_name }} — Universal Terminal & Screen Reader Accessibility"
+          body: |
+            # ⚡ NexusShell ${{ github.ref_name }} Release Notes
+
+            We are proud to release **NexusShell ${{ github.ref_name }}**, delivering a universal, standards-compliant terminal streaming architecture, real-time screen-reader accessibility for interactive CLI tools and AI agents, authentic dynamic PowerShell autocompletion, and rock-solid ConPTY stability.
+
+            ---
+
+            ### 🚀 What's New in ${{ github.ref_name }}:
+
+            * **🖥️ Universal Terminal Streaming & Real-Time TUI Speech:**
+              * The Command Input box now operates as a true, real-time terminal input pipeline, streaming keystrokes, navigation keys, and shortcuts directly to interactive CLI tools and AI agents (such as `agy`, `claude`, `inquirer`, and `fzf`).
+              * **Live TUI Cursor Announcements:** Navigating interactive menus, slash commands, model pickers, or checkboxes with the **Up/Down Arrow keys** automatically extracts and speaks the active item via UI Automation (`LiveRegionChanged`) for NVDA, JAWS, and Narrator.
+
+            * **⚡ Authentic Dynamic PowerShell Autocompletion:**
+              * Powered by an out-of-process PowerShell runspace (`PowerShellCompletionService`) that queries native `CommandCompletion` in real time.
+              * Navigate cmdlets, parameters, file paths, and variables using **Up/Down Arrows** with clear positional speech (`"Item, 1 of N"`), and insert completions seamlessly with **Tab** or **Enter** with full caret synchronization.
+
+            * **⌨️ Dual-Mode `Tab` Navigation & Multi-Line Input:**
+              * **Smart `Tab` / `Shift + Tab`:** Press `Tab` in the Command Input box to accept an open suggestion, or jump directly to the terminal output area when no suggestions are active. Press `Shift + Tab` from the terminal output to return to the Command Input box.
+              * **`Shift + Enter` Multi-Line Drafting:** Write and edit multi-line scripts directly inside the Command Input box before executing.
+              * **Universal `Alt` Menu Bar Access:** Pressing `Alt` from anywhere—including inside the Command Input box—reliably activates the application menu bar with full arrow-key navigation.
+
+            * **🔊 Isolated Low-Latency Audio & Deadlock-Free ConPTY Engine:**
+              * Typing clicks and state chimes run on isolated background threads so they never clip or interrupt screen reader speech synthesis.
+              * Eliminated synchronous pipe buffer stalls and hardened cross-thread WebView2 dispatching to guarantee zero UI freezes across all machines.
+
+            ---
+
+            ### 📦 Asset Files:
+            * **`NexusShell_Setup.exe`**: Standard Windows GUI Installer.
+            * **`NexusShell_Silent_Setup.exe`**: Silent Background Installer (Recommended for fast upgrades & WinGet).
+            * **`${{ env.ZIP_NAME }}`**: Self-contained portable build (no .NET runtime installation required).
           files: |
+            output/NexusShell_Setup.exe
+            output/NexusShell_Silent_Setup.exe
             ${{ env.ZIP_NAME }}
             ${{ env.ZIP_NAME }}.sha256
-            output/NexusShell_Setup.exe
             output/NexusShell_Setup.exe.sha256
-            output/NexusShell_Silent_Setup.exe
             output/NexusShell_Silent_Setup.exe.sha256
           generate_release_notes: true
 

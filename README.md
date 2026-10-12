@@ -1,6 +1,6 @@
 <div align="center">
 
-# ⚡ NexusShell v4.0.0
+# ⚡ NexusShell v4.1.1
 
 ### The Modern, Accessible, AI-Powered Windows Terminal
 
@@ -20,30 +20,38 @@
 
 ---
 
-## 🚀 What's New in v4.0.0?
+## 🚀 What's New in v4.1.1?
 
-Version 4.0.0 marks a revolutionary leap forward in performance, visual presentation, and accessibility. We have completely rewritten our core output engine to bridge the gap between traditional CLI tools and modern screen-reader interfaces.
+Version 4.1.1 transforms NexusShell into a universal, standards-compliant terminal host with real-time screen-reader accessibility for modern CLI agents, authentic dynamic PowerShell autocompletion, and rock-solid stability.
 
 ---
 
-### 🌐 1. The WebView2 & xterm.js Revolution
-We have replaced the traditional text control with an embedded Chromium host (`WebView2`). In the background, a hidden, high-performance `xterm.js` instance processes the raw shell (ConPTY) stream. This resolved text is then rendered into accessible HTML command blocks (`<h3>` headings for commands and `<pre role="log" aria-live="polite">` log regions).
+### 🖥️ 1. Universal Terminal Streaming & Interactive CLI Support
+The Command Input box now operates as a true, real-time terminal input pipeline. When interactive command-line tools or AI CLI agents (such as `agy`, `claude`, `inquirer`, or `fzf`) are active, keystrokes, navigation keys, and shortcuts stream directly to the ConPTY child process without artificial barriers.
 
-* **Benefit:** Absolute flexibility and ease of navigation for NVDA and JAWS users. Screen readers treat the terminal output as a clean web page, allowing line-by-line reading and heading navigation ('H').
+* **Real-Time TUI Speech Feedback:** As you navigate interactive menus, model pickers, slash commands, or checkboxes using the **Up/Down Arrow keys**, NexusShell automatically extracts the active cursor selection and announces it immediately via UI Automation (`LiveRegionChanged`), making full-screen TUI tools 100% accessible to NVDA, JAWS, and Narrator.
 
-### 🤖 2. Goodbye AI Filters (Zero Duplications)
-In previous versions, complex C# text-filtering logic was used to clean up AI outputs, which often resulted in duplicated lines, double-readings, and screen reader stuttering. In v4.0.0, the C# filter pipeline is completely removed. By leveraging `xterm.js` as a background parser, the terminal output is rendered clean, free from ANSI codes, stray backspaces, or double-reads.
+### ⚡ 2. Authentic Dynamic PowerShell Autocompletion
+Say goodbye to static suggestion lists. NexusShell v4.1.1 features a dedicated out-of-process PowerShell completion engine (`PowerShellCompletionService`) that queries native `CommandCompletion` in real time.
 
-### 🎭 3. Fully Accessible Interactive Screen (TUIs)
-Command-line interactive prompts (such as selecting models inside `agy /model` or answering prompts) are now fully intercepted. The WebView2 displays a beautiful, keyboard-accessible HTML `<dialog>` overlay. 
+* **Accessible Suggestion Navigation:** Browse cmdlets, parameters, file paths, and variables with **Up/Down Arrows** with clear positional announcements (`"Item, 1 of N"`), and insert completions effortlessly with **Tab** or **Enter** with automatic caret synchronization.
 
-* **Navigation:** Focus is automatically trapped inside the dialog. Use **Arrow Keys** to navigate, **Space/Enter** to confirm, and **Escape** to cancel and resume the terminal session.
+### ⌨️ 3. Dual-Mode Tab Navigation & Multi-Line Drafting
+* **Smart `Tab` / `Shift + Tab` Navigation:** Press `Tab` inside the Command Input box to accept an open suggestion, or seamlessly move focus directly to the terminal output area when no suggestions are open. Press `Shift + Tab` from the terminal output to jump right back to the Command Input box.
+* **`Shift + Enter` Multi-Line Input:** Draft multi-line scripts and complex commands directly in the Command Input box before pressing `Enter` to execute.
+* **Full `Alt` Menu Bar Accessibility:** Pressing `Alt` from anywhere—including directly inside the Command Input box—activates the application menu bar with full vertical and horizontal arrow-key navigation.
 
-### ✍️ 4. Intelligent Bilingual & RTL Alignment
-Traditional Windows consoles struggle with Right-to-Left (RTL) languages like Arabic, visually reversing words or breaking mixed English/Arabic layouts. NexusShell v4.0.0 implements per-line directionality checking (`dir="auto"`). Arabic and mixed lines are visually aligned to the right and ordered correctly for sighted users, while keeping the logical sequence untouched so screen readers pronounce them perfectly.
+### 🔊 4. Isolated Low-Latency Audio & Lock-Free ConPTY Engine
+* **Background Audio Threading:** Typing clicks and state chimes execute on isolated background threads so they never clip or interrupt screen reader speech synthesis.
+* **Deadlock-Free Pipe I/O:** Eliminated synchronous pipe buffer stalls and hardened cross-thread WebView2 dispatching to guarantee zero UI freezes during heavy CLI output streaming.
 
-### 🎵 5. Non-Intrusive Sound Effects
-Dynamic sound cues play on command execution, output updates, and opening/closing windows. These clicks and chimes are subtle, fast, and volume-scaled, providing valuable spatial awareness without interfering with speech synthesizers.
+---
+
+## 🌟 Core Highlights (from v4.0)
+
+* **WebView2 & xterm.js Engine:** Processes raw ConPTY streams in a hidden `xterm.js` instance and renders clean, navigable HTML command blocks (`<h3>` headings and `<pre role="log">` live regions).
+* **Intelligent Bilingual & RTL Alignment:** Automatic per-line directionality (`dir="auto"`) aligns Arabic and mixed English/Arabic text naturally while preserving logical screen-reader reading order.
+* **Accessible Interactive Dialogs:** Supports keyboard-trapped modal overlays for structured prompts.
 
 ---
 
@@ -79,16 +87,18 @@ winget install MF.NexusShell
 | Shortcut | Action |
 |----------|--------|
 | `Enter` | Run command (Terminal) / Send message (AI Chat) |
+| `Shift + Enter` | Insert a new line in the Command Input box |
+| `Tab` / `Shift + Tab` | Accept suggestion or toggle focus between Command Input and Terminal Output |
+| `F6 / Escape` | Focus Command Input box / Toggle focus between terminal and input |
+| `Alt` | Activate the application menu bar from anywhere |
+| `Ctrl + Shift + R` | Re-read current terminal screen aloud |
 | `F1` | Open Help |
 | `F2 / Alt+S` | Open Settings |
-| `F6 / Escape` | Focus Command Input box / Toggle focus between terminal and input |
 | `Ctrl + T` | Open new terminal tab |
 | `Ctrl + L` | Clear terminal output |
 | `Ctrl + Shift + S` | Stop running command |
 | `Ctrl + F` | Search terminal output |
-| `Arrow Keys` | Navigate options (Interactive Dialog) |
-| `Space / Enter` | Select option (Interactive Dialog) |
-| `Escape` | Dismiss dialog (Interactive Dialog) |
+| `Arrow Keys` | Navigate suggestions, interactive TUI menus, or command history |
 
 ---
 
