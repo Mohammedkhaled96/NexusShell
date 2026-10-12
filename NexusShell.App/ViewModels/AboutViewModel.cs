@@ -23,32 +23,32 @@ namespace NexusShell.App.ViewModels
             return @"PRODUCT INFORMATION
 --------------------------------------------------
 Product Name:    NexusShell
-Version:         4.0.0
+Version:         4.1.1
 Architecture:    .NET 10 / WPF / Windows ConPTY / WebView2
 
-WHAT'S NEW IN 4.0.0
+WHAT'S NEW IN 4.1.1
 --------------------------------------------------
-- Rebuilt Terminal Output Engine: Command output now renders as
-  clean, accurate text with no duplication and no leftover control
-  characters. A modern terminal engine resolves the raw shell stream
-  exactly as a true terminal would.
-- Accessible Output by Design: Output is presented as labelled
-  command blocks (heading + live region) that NVDA and JAWS read
-  naturally — navigate by command, review, and copy with ease.
-- Cleaner Reading Experience: Excess blank lines from full-screen
-  command-line tools are automatically reduced, while paragraph
-  spacing is preserved.
-- Smarter Scrolling: New output no longer pulls you away while you
-  are reading earlier results; auto-follow resumes at the bottom.
-- Streamlined & Modernised: Legacy output-processing code has been
-  removed for a faster, simpler, and more reliable application.
+- Authentic Terminal Experience (Input & Output): NexusShell now operates
+  as a true, standards-compliant terminal host. The Command Input box streams
+  raw input directly to PowerShell, CMD, and interactive AI agents/brokers,
+  providing an authentic terminal environment paired with clean, accessible rendering.
+- Shift + Enter Multi-Line Input: Create and draft multi-line commands
+  and scripts directly in the Command Input box before executing.
+- Decoupled, Quiet Typing: Removed UI binding echo loops so your screen
+  reader only announces your typing cleanly without stuttering.
+- Enhanced Screen Navigation: Reliable escape and cancellation handling
+  in interactive command-line sessions.
+- Dynamic PowerShell Autocompletion: High-speed, out-of-process runspace
+  providing authentic parameter and path suggestions.
+- Isolated Audio Feedback: Typing sounds run on background threads
+  to ensure they never clip or interrupt screen reader speech.
 
-CONTINUED IN 4.0.0
+CONTINUED IN 4.1.1
 --------------------------------------------------
-- Interactive Screen: a fully accessible overlay — navigate with the
-  arrow keys, confirm with Enter, cancel with Escape (NVDA / JAWS).
-- Integrated AI assistance (Groq) and a built-in HTTP API Tester.
-- Managers for SSH, aliases, snippets, environment variables,
+- Clean, accessible HTML command blocks rendered in WebView2 with xterm.js.
+- Bilingual & RTL Arabic layout support with preserved reading order.
+- Integrated AI assistance (Groq) and built-in HTTP API Tester.
+- Full suite of managers: SSH, aliases, snippets, environment variables,
   shortcuts, and themes.
 
 ABOUT THE PROJECT

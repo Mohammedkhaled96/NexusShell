@@ -102,6 +102,10 @@ namespace NexusShell.App
             services.AddSingleton<ViewModels.InteractiveScreenViewModel>();
             services.AddSingleton<IInteractiveScreenService, InteractiveScreenService>();
 
+            // PowerShell Completion & Screen Reader Announcement
+            services.AddSingleton<IPowerShellCompletionService, PowerShellCompletionService>();
+            services.AddSingleton<IScreenReaderAnnouncer, ScreenReaderAnnouncer>();
+
             // الخدمات المؤقتة (Transients) - يتم إنشاؤها عند الطلب
             services.AddTransient<ITerminalSession, TerminalSession>();
 
@@ -164,6 +168,10 @@ namespace NexusShell.App
             var soundService = _host.Services.GetRequiredService<ISoundService>();
             soundService.ApplySettings(settings);
             soundService.Preload();
+
+            // Warm up PowerShell Completion Runspace in background
+            var psCompletion = _host.Services.GetRequiredService<IPowerShellCompletionService>();
+            _ = Task.Run(async () => await psCompletion.InitializeAsync());
 
             // Universal click sound for every button/checkbox/radio in every window.
             RegisterGlobalUiSounds(soundService);

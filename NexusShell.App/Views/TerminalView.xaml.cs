@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using Microsoft.Web.WebView2.Core;
 using NexusShell.App.ViewModels;
 
@@ -17,7 +18,7 @@ namespace NexusShell.App.Views
     public partial class TerminalView : UserControl
     {
         // C# → JS (first char): 'o' output, 'c' command-start, 'x' system, 'k' clear, 's' shell.
-        // JS → C# (first char): 'R' ready.
+        // JS → C# (first char): 'R' ready, 'f' focus input.
         private TerminalTabViewModel? _vm;
         private bool _coreReady;          // CoreWebView2 created
         private bool _pageReady;          // page reported 'R'
@@ -29,6 +30,32 @@ namespace NexusShell.App.Views
             InitializeComponent();
             Loaded += OnLoaded;
             DataContextChanged += OnDataContextChanged;
+            PreviewKeyDown += TerminalView_PreviewKeyDown;
+        }
+
+        private void TerminalView_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.F6 || e.Key == Key.Escape || (e.Key == Key.Tab && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift))
+            {
+                e.Handled = true;
+                var window = Window.GetWindow(this) as MainWindow ?? Application.Current.MainWindow as MainWindow;
+                window?.FocusCommandInput();
+            }
+        }
+
+        public void FocusTerminal()
+        {
+            WebTerminal.Focus();
+            Keyboard.Focus(WebTerminal);
+            if (_coreReady && WebTerminal.CoreWebView2 != null)
+            {
+                try
+                {
+                    WebTerminal.CoreWebView2.ExecuteScriptAsync(
+                        "var block = document.querySelector('.command-block:last-child .command-output') || document.body; if (block) block.focus();");
+                }
+                catch { }
+            }
         }
 
         private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -61,6 +88,7 @@ namespace NexusShell.App.Views
             }
             catch (Exception ex)
             {
+                Serilog.Log.Error(ex, "WebView2 initialization failed in TerminalView");
                 System.Diagnostics.Debug.WriteLine($"WebView2 init failed: {ex}");
             }
         }
@@ -71,6 +99,7 @@ namespace NexusShell.App.Views
             {
                 oldVm.RawOutputReceived -= OnRawOutput;
                 oldVm.CommandStarted -= OnCommandStarted;
+                oldVm.CommandCompleted -= OnCommandCompleted;
                 oldVm.ClearScreenRequested -= OnClearScreen;
                 oldVm.InteractiveScreenService.ShowPromptRequested -= OnShowPromptRequested;
             }
@@ -78,7 +107,6 @@ namespace NexusShell.App.Views
             if (e.NewValue is TerminalTabViewModel vm)
             {
                 _vm = vm;
-                _pageReady = false;
                 lock (_pendingLock) { _pending.Clear(); }
 
                 // Snapshot scrollback BEFORE subscribing so live events arriving during
@@ -91,8 +119,14 @@ namespace NexusShell.App.Views
 
                 vm.RawOutputReceived += OnRawOutput;
                 vm.CommandStarted += OnCommandStarted;
+                vm.CommandCompleted += OnCommandCompleted;
                 vm.ClearScreenRequested += OnClearScreen;
                 vm.InteractiveScreenService.ShowPromptRequested += OnShowPromptRequested;
+
+                if (_coreReady && WebTerminal.CoreWebView2 != null)
+                {
+                    FlushPending();
+                }
             }
             else
             {
@@ -104,8 +138,21 @@ namespace NexusShell.App.Views
         private void OnRawOutput(string data)
         {
             if (string.IsNullOrEmpty(data)) return;
+
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(() => OnRawOutput(data)));
+                return;
+            }
+
             if (!_pageReady)
             {
+                if (_coreReady && WebTerminal.CoreWebView2 != null)
+                {
+                    FlushPending();
+                    Post('o', data);
+                    return;
+                }
                 lock (_pendingLock) { _pending.Append(data); }
                 return;
             }
@@ -113,6 +160,8 @@ namespace NexusShell.App.Views
         }
 
         private void OnCommandStarted(string command) => Post('c', command ?? string.Empty);
+
+        private void OnCommandCompleted() => PostRaw("e");
 
         private void OnClearScreen() => PostRaw("k");
 
@@ -138,6 +187,24 @@ namespace NexusShell.App.Views
 
             if (msg[0] == 'R')   // page ready → flush buffered output
                 FlushPending();
+            else if (msg[0] == 'a') // Real-time TUI item announcement
+            {
+                var payload = msg.Substring(1);
+                if (payload.StartsWith("[chk:1]"))
+                {
+                    var itemName = payload.Substring(7);
+                    NexusShell.App.Services.ScreenReaderAnnouncer.AnnounceCheckbox(itemName, true);
+                }
+                else if (payload.StartsWith("[chk:0]"))
+                {
+                    var itemName = payload.Substring(7);
+                    NexusShell.App.Services.ScreenReaderAnnouncer.AnnounceCheckbox(itemName, false);
+                }
+                else if (!string.IsNullOrWhiteSpace(payload))
+                {
+                    NexusShell.App.Services.ScreenReaderAnnouncer.Speak(payload);
+                }
+            }
             else if (msg[0] == 'i')   // interactive prompt result
             {
                 var resultJson = msg.Substring(1);
@@ -147,6 +214,14 @@ namespace NexusShell.App.Views
             {
                 var promptJson = msg.Substring(1);
                 _vm?.HandleJsPromptDetected(promptJson);
+            }
+            else if (msg[0] == 'f')   // focus command input requested (F6 / Escape)
+            {
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    var window = Window.GetWindow(this) as MainWindow ?? Application.Current.MainWindow as MainWindow;
+                    window?.FocusCommandInput();
+                }));
             }
         }
 

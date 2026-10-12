@@ -3,6 +3,7 @@
 [Oo]bj/
 [Oo]ut/
 publish/
+output/
 artifacts/
 *.nupkg
 

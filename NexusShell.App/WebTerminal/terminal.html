@@ -248,8 +248,6 @@
 
         var pre = document.createElement('pre');
         pre.className = 'command-output';
-        pre.setAttribute('role', 'log');
-        pre.setAttribute('aria-live', 'polite');
         pre.setAttribute('aria-labelledby', heading.id);
 
         wrap.appendChild(pre);
@@ -289,19 +287,25 @@
         addCopyButton(S.currentBlock);
         S.currentBlock = null;
         S.isSystemBlock = false;
+
+        var b = xterm.buffer.active;
+        S.commandStartLine = Math.max(b.baseY + b.cursorY, b.length - 1);
+
         announce('Command finished.');
       }
 
       // Resolve the live region (commandStartLine → cursor) from xterm's buffer
       // and mirror it into the current block's <pre> as clean text.
       function syncHtmlBlock() {
-        if (!S.currentBlock) createNewBlock('System Output', true);
+        if (!S.currentBlock) {
+          createNewBlock(S.commandCounter === 0 ? 'System Output' : 'Output', true);
+        }
         var pre = S.currentBlock.querySelector('.command-output');
         if (!pre) return;
 
         var buffer = xterm.buffer.active;
         var start = Math.max(0, S.commandStartLine);
-        var end = buffer.baseY + buffer.cursorY;
+        var end = Math.max(buffer.baseY + buffer.cursorY, buffer.length - 1);
 
         var lines = [];
         for (var i = start; i <= end; i++) {
@@ -325,34 +329,127 @@
         // Finalize the block once a shell prompt has returned (debounced).
         var promptDetected = false;
         var scanStart = Math.max(start, end - 4);
-        for (var j = end; j >= scanStart; j--) {
-          var t = buffer.getLine(j) ? buffer.getLine(j).translateToString(true) : '';
-          if (detectPromptReturned(t, S.shellCmd)) { promptDetected = true; break; }
+        var recentLines = [];
+        for (var j = scanStart; j <= end; j++) {
+          var lineObj = buffer.getLine(j);
+          if (lineObj) {
+            var str = lineObj.translateToString(true).trim();
+            if (str) recentLines.push(str);
+            if (detectPromptReturned(str, S.shellCmd)) { promptDetected = true; break; }
+          }
         }
+        if (!promptDetected && recentLines.length > 0) {
+          if (detectPromptReturned(recentLines.join(' '), S.shellCmd)) promptDetected = true;
+        }
+
         if (!S.commandLock && end > S.commandStartLine && promptDetected && !S.promptDebounceTimeout) {
           S.promptDebounceTimeout = setTimeout(function () {
             S.promptDebounceTimeout = null;
             var b = xterm.buffer.active;
-            var cEnd = b.baseY + b.cursorY;
+            var cEnd = Math.max(b.baseY + b.cursorY, b.length - 1);
             var cStart = Math.max(0, S.commandStartLine);
             var still = false;
-            for (var k = cEnd; k >= Math.max(cStart, cEnd - 4); k--) {
-              var lt = b.getLine(k) ? b.getLine(k).translateToString(true) : '';
-              if (detectPromptReturned(lt, S.shellCmd)) { still = true; break; }
+            var checkLines = [];
+            for (var k = Math.max(cStart, cEnd - 4); k <= cEnd; k++) {
+              var lObj = b.getLine(k);
+              if (lObj) {
+                var lstr = lObj.translateToString(true).trim();
+                if (lstr) checkLines.push(lstr);
+                if (detectPromptReturned(lstr, S.shellCmd)) { still = true; break; }
+              }
+            }
+            if (!still && checkLines.length > 0) {
+              if (detectPromptReturned(checkLines.join(' '), S.shellCmd)) still = true;
             }
             if (still) finalizeCurrentBlock();
           }, 400);
         }
 
-        // Reset and trigger the JS-based interactive prompt detector
-        if (S.interactivePromptTimeout) {
-          clearTimeout(S.interactivePromptTimeout);
+        // ── Real-time ConPTY Question/Prompt Announcer (Generic & Non-intrusive) ──
+        var activePromptLine = '';
+        for (var q = 0; q < squashed.length; q++) {
+          var qText = squashed[q].trim();
+          if (/^[\?؟]\s+\S+/.test(qText)) {
+            activePromptLine = qText.replace(/^[\?؟]\s*/, '').trim();
+          }
         }
-        if (S.currentBlock && !S.isSystemBlock && !S.isInteractivePromptActive) {
-          S.interactivePromptTimeout = setTimeout(function () {
-            checkInteractivePrompt();
-          }, 300);
+
+        var isNewPrompt = (activePromptLine && activePromptLine !== (S.lastAnnouncedPrompt || ''));
+        if (isNewPrompt) {
+          S.lastAnnouncedPrompt = activePromptLine;
         }
+
+        // ── Real-time Active TUI Selection Announcer for Screen Readers ──
+        var lastSelectionName = S.lastSelectionName || '';
+        var lastSelectionChecked = S.lastSelectionChecked !== undefined ? S.lastSelectionChecked : null;
+        var currentSelectionObj = null;
+
+        for (var l = squashed.length - 1; l >= 0; l--) {
+          var lineText = squashed[l].trim();
+          if (/^(?:●|◉|✔|\[[xX✔✓•\s]\]|\([*•xX\s]\)|->|→|▸|\*|\>\s+\S)/.test(lineText) || lineText.startsWith('●') || lineText.startsWith('◉') || lineText.startsWith('>') || lineText.startsWith('❯')) {
+            var formatted = formatA11yGlyphLine(lineText);
+            if (formatted) {
+              currentSelectionObj = formatted;
+              break;
+            }
+          }
+        }
+
+        if (currentSelectionObj && (currentSelectionObj.name !== lastSelectionName || currentSelectionObj.isChecked !== lastSelectionChecked || isNewPrompt)) {
+          S.lastSelectionName = currentSelectionObj.name;
+          S.lastSelectionChecked = currentSelectionObj.isChecked;
+
+          var speechPayload = currentSelectionObj.name;
+          if (isNewPrompt && activePromptLine) {
+            speechPayload = activePromptLine + '، ' + currentSelectionObj.name;
+          }
+
+          if (wv) {
+            try {
+              if (currentSelectionObj.isChecked === true) {
+                wv.postMessage('a[chk:1]' + speechPayload);
+              } else if (currentSelectionObj.isChecked === false) {
+                wv.postMessage('a[chk:0]' + speechPayload);
+              } else {
+                wv.postMessage('a' + speechPayload);
+              }
+            } catch (e) {}
+          }
+        }
+      }
+
+      function formatA11yGlyphLine(rawLine) {
+        var line = (rawLine || '').trim();
+        if (!line) return null;
+
+        var withoutPointer = line.replace(/^[>❯›▶→*●◉⦿✔✓•▸\-\|]+\s*/, '').trim();
+        var numPrefix = '';
+        var numMatch = withoutPointer.match(/^(\d+[\.\)\-]\s*)(.*)$/);
+        if (numMatch) {
+          numPrefix = numMatch[1];
+          withoutPointer = numMatch[2].trim();
+        }
+
+        var isChecked = null;
+        var content = withoutPointer;
+
+        if (/^(?:\[[xX✔✓•]\]|\(\*\)|\(•\)|\([xX]\)|☑|✔|✓|◉|⦿)\s*(.*)$/.test(withoutPointer)) {
+          var m = withoutPointer.match(/^(?:\[[xX✔✓•]\]|\(\*\)|\(•\)|\([xX]\)|☑|✔|✓|◉|⦿)\s*(.*)$/);
+          isChecked = true;
+          content = m && m[1] ? m[1].trim() : '';
+        } else if (/^(?:\[\s*\]|\(\s*\)|☐|○|◯)\s*(.*)$/.test(withoutPointer)) {
+          var m = withoutPointer.match(/^(?:\[\s*\]|\(\s*\)|☐|○|◯)\s*(.*)$/);
+          isChecked = false;
+          content = m && m[1] ? m[1].trim() : '';
+        }
+
+        content = content.replace(/^\[\s*/, '').replace(/\s*\]$/, '').trim();
+        if (!content && isChecked === null && !numPrefix) return null;
+
+        return {
+          name: (numPrefix + content).trim(),
+          isChecked: isChecked
+        };
       }
 
       function handleOutput(data) {
@@ -367,8 +464,6 @@
           clearTimeout(S.interactivePromptTimeout);
           S.interactivePromptTimeout = null;
         }
-        // While a user command is live, treat further input as interactive (no new block).
-        if (S.currentBlock && !S.isSystemBlock) return;
         if (S.currentBlock) finalizeCurrentBlock();
 
         var buffer = xterm.buffer.active;
@@ -409,16 +504,14 @@
         announce('Terminal output cleared.');
       }
 
-      // v4.0.0 prompt detector (verbatim).
+      // Authentic shell prompt detector.
       function detectPromptReturned(data, shellCmd) {
         var clean = (data || '').trim();
         if (!clean) return false;
-        return /PS [A-Z]:\\[^>]*>$/i.test(clean) ||
-               /PS >$/i.test(clean) ||
-               /[A-Z]:\\[^>]*>$/i.test(clean) ||
-               /[\w\-]+@[\w\-]+:.*[\$\#]\s*$/i.test(clean) ||
-               clean === '>' || clean === '>>>' || clean === '?' || clean === ':' ||
-               /^\w+>$/.test(clean);
+        return /(?:(?:\([^\)]+\)\s*)?(?:PS\s+)?[A-Za-z]:\\[\s\S]*|PS\s*)>$/i.test(clean) ||
+               /^PS\s*>/i.test(clean) ||
+               (clean.endsWith('>') && (clean.includes(':\\') || clean.includes('PS ') || clean.includes('PS>'))) ||
+               /[\w\-]+@[\w\-]+:.*[\$\#]\s*$/i.test(clean);
       }
 
       // ── Host bridge (replaces Electron IPC) ────────────────────────────
@@ -435,6 +528,7 @@
           switch (kind) {
             case 'o': handleOutput(body); break;
             case 'c': startCommand(body); break;
+            case 'e': case 'd': finalizeCurrentBlock(); break;
             case 'x': addOutputBlock('System', body); break;
             case 'k': clearAll(); break;
             case 's': if (body) S.shellCmd = body; break;
@@ -443,6 +537,29 @@
         });
         wv.postMessage('R'); // ready → host flushes buffered output
       }
+
+      // Global F6 / Escape / Shift+Tab keyboard navigation: returns focus to WPF Command Input
+      window.addEventListener('keydown', function (e) {
+        if (e.key === 'F6' || e.keyCode === 117) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (wv) wv.postMessage('f');
+        } else if (e.key === 'Escape' || e.keyCode === 27) {
+          var dlg = document.getElementById('dlg-interactive');
+          if (!dlg || !dlg.open) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (wv) wv.postMessage('f');
+          }
+        } else if (e.key === 'Tab' && e.shiftKey) {
+          var dlg = document.getElementById('dlg-interactive');
+          if (!dlg || !dlg.open) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (wv) wv.postMessage('f');
+          }
+        }
+      }, true);
 
       var dlg = document.getElementById('dlg-interactive');
       var titleEl = document.getElementById('interactive-title');
