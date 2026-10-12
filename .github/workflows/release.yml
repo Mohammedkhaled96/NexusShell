@@ -62,7 +62,7 @@ jobs:
           "ZIP_NAME=$zipName" | Out-File $env:GITHUB_ENV -Append
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: NexusShell-release-assets
           path: |
