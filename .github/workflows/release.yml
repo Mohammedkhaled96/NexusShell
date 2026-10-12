@@ -120,7 +120,7 @@ jobs:
           generate_release_notes: true
 
       - name: Publish to Windows Package Manager (winget)
-        if: ${{ startsWith(github.ref, 'refs/tags/') && secrets.WINGET_TOKEN != '' }}
+        if: startsWith(github.ref, 'refs/tags/')
         uses: vedantmgoyal2009/winget-releaser@v2
         continue-on-error: true
         with:
