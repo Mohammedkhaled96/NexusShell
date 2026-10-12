@@ -77,39 +77,38 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v3
         with:
-          name: "NexusShell ${{ github.ref_name }} — Universal Terminal & Screen Reader Accessibility"
+          name: "NexusShell ${{ github.ref_name }} — Authentic Terminal Streaming & Accessibility"
           body: |
             # ⚡ NexusShell ${{ github.ref_name }} Release Notes
 
-            We are proud to release **NexusShell ${{ github.ref_name }}**, delivering a universal, standards-compliant terminal streaming architecture, real-time screen-reader accessibility for interactive CLI tools and AI agents, authentic dynamic PowerShell autocompletion, and rock-solid ConPTY stability.
+            We are proud to present **NexusShell ${{ github.ref_name }}**, elevating NexusShell into a true, standards-compliant terminal host with real-time ConPTY input streaming for modern AI agents and CLI tools, dynamic PowerShell autocompletion, multi-line command drafting, and isolated background audio.
 
             ---
 
             ### 🚀 What's New in ${{ github.ref_name }}:
 
-            * **🖥️ Universal Terminal Streaming & Real-Time TUI Speech:**
-              * The Command Input box now operates as a true, real-time terminal input pipeline, streaming keystrokes, navigation keys, and shortcuts directly to interactive CLI tools and AI agents (such as `agy`, `claude`, `inquirer`, and `fzf`).
-              * **Live TUI Cursor Announcements:** Navigating interactive menus, slash commands, model pickers, or checkboxes with the **Up/Down Arrow keys** automatically extracts and speaks the active item via UI Automation (`LiveRegionChanged`) for NVDA, JAWS, and Narrator.
+            * **🖥️ Authentic Terminal Experience (Input & Output Streaming):**
+              * NexusShell now operates as a true, standards-compliant terminal host. The Command Input box streams raw input, navigation keys, and control sequences directly to PowerShell, CMD, and interactive AI agents/brokers (such as `agy`, `claude`, `inquirer`, and `fzf`), providing an authentic terminal environment paired with clean, accessible rendering.
+              * **Live Interactive CLI & TUI Speech:** Navigating interactive menus, slash commands, model pickers, or checkboxes with the **Arrow Keys** automatically announces the active selection in real time for NVDA, JAWS, and Narrator.
 
-            * **⚡ Authentic Dynamic PowerShell Autocompletion:**
-              * Powered by an out-of-process PowerShell runspace (`PowerShellCompletionService`) that queries native `CommandCompletion` in real time.
-              * Navigate cmdlets, parameters, file paths, and variables using **Up/Down Arrows** with clear positional speech (`"Item, 1 of N"`), and insert completions seamlessly with **Tab** or **Enter** with full caret synchronization.
+            * **⚡ Dynamic PowerShell Autocompletion:**
+              * High-speed, out-of-process PowerShell runspace (`PowerShellCompletionService`) providing authentic command, cmdlet, parameter, and file path suggestions in real time.
+              * Browse suggestions using **Up/Down Arrows** with positional speech feedback (e.g., `"Item, 1 of 12"`), and press **Tab** or **Enter** to apply or **Escape** to dismiss.
 
-            * **⌨️ Dual-Mode `Tab` Navigation & Multi-Line Input:**
-              * **Smart `Tab` / `Shift + Tab`:** Press `Tab` in the Command Input box to accept an open suggestion, or jump directly to the terminal output area when no suggestions are active. Press `Shift + Tab` from the terminal output to return to the Command Input box.
-              * **`Shift + Enter` Multi-Line Drafting:** Write and edit multi-line scripts directly inside the Command Input box before executing.
-              * **Universal `Alt` Menu Bar Access:** Pressing `Alt` from anywhere—including inside the Command Input box—reliably activates the application menu bar with full arrow-key navigation.
+            * **✍️ `Shift + Enter` Multi-Line Input & Quiet Decoupled Typing:**
+              * **Multi-Line Command Drafting:** Create and edit multi-line commands, scripts, or queries directly in the Command Input box using `Shift + Enter` before executing.
+              * **Decoupled, Quiet Typing:** Removed UI binding echo loops so your screen reader only announces your typing cleanly without stuttering.
+              * **Enhanced Screen Navigation:** Reliable escape, dismissal, and cancellation handling in interactive command-line sessions.
 
-            * **🔊 Isolated Low-Latency Audio & Deadlock-Free ConPTY Engine:**
-              * Typing clicks and state chimes run on isolated background threads so they never clip or interrupt screen reader speech synthesis.
-              * Eliminated synchronous pipe buffer stalls and hardened cross-thread WebView2 dispatching to guarantee zero UI freezes across all machines.
+            * **🔊 Isolated Audio Feedback:**
+              * Typing sounds (`KeyType`) and status chimes execute on dedicated background threads to ensure they never clip or interrupt screen reader speech synthesis.
 
             ---
 
-            ### 📦 Asset Files:
+            ### 📦 Asset Files (All Self-Contained — No External .NET Runtime Required):
             * **`NexusShell_Setup.exe`**: Standard Windows GUI Installer.
             * **`NexusShell_Silent_Setup.exe`**: Silent Background Installer (Recommended for fast upgrades & WinGet).
-            * **`${{ env.ZIP_NAME }}`**: Self-contained portable build (no .NET runtime installation required).
+            * **`${{ env.ZIP_NAME }}`**: Portable ZIP Archive (extract and run directly).
           files: |
             output/NexusShell_Setup.exe
             output/NexusShell_Silent_Setup.exe

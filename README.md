@@ -1,6 +1,6 @@
 <div align="center">
 
-# ⚡ NexusShell v4.0.0
+# ⚡ NexusShell v4.1.1
 
 ### The Modern, Accessible, AI-Powered Windows Terminal
 
@@ -21,27 +21,29 @@
 
 ---
 
-## 🚀 What's New in v4.0.0?
+## 🚀 What's New in v4.1.1?
 
-Version 4.0.0 marks a revolutionary leap forward in performance, visual presentation, and accessibility. We have completely rewritten our core output engine to bridge the gap between traditional CLI tools and modern screen-reader interfaces.
+Version 4.1.1 elevates NexusShell into a true, standards-compliant terminal host—combining real-time ConPTY input streaming for modern AI agents and CLI tools, dynamic PowerShell autocompletion, multi-line command drafting, and isolated background audio.
 
 ---
 
-### 🌐 1. The WebView2 & xterm.js Revolution
-We have replaced the traditional text control with an embedded Chromium host (`WebView2`). In the background, a hidden, high-performance `xterm.js` instance processes the raw shell (ConPTY) stream. This resolved text is then rendered into accessible HTML command blocks (`<h3>` headings for commands and `<pre role="log" aria-live="polite">` log regions).
+### 🖥️ 1. Authentic Terminal Experience (Input & Output Streaming)
+NexusShell now operates as a true, standards-compliant terminal host. The Command Input box streams raw input, navigation keys, and control sequences directly to PowerShell, CMD, and interactive AI agents/brokers (such as `agy`, `claude`, `inquirer`, and `fzf`), providing an authentic terminal environment paired with clean, accessible rendering.
 
-* **Benefit:** Absolute flexibility and ease of navigation for NVDA and JAWS users. Screen readers treat the terminal output as a clean web page, allowing line-by-line reading and heading navigation ('H').
+* **Live Interactive CLI & TUI Speech:** As you navigate interactive CLI menus, model pickers, slash commands, or checkboxes using the **Arrow Keys**, NexusShell automatically extracts and announces the active selection in real time for NVDA, JAWS, and Narrator.
 
-### 🤖 2. Goodbye AI Filters (Zero Duplications)
-In previous versions, complex C# text-filtering logic was used to clean up AI outputs, which often resulted in duplicated lines, double-readings, and screen reader stuttering. In v4.0.0, the C# filter pipeline is completely removed. By leveraging `xterm.js` as a background parser, the terminal output is rendered clean, free from ANSI codes, stray backspaces, or double-reads.
+### ⚡ 2. Dynamic PowerShell Autocompletion
+Powered by a high-speed, out-of-process PowerShell runspace (`PowerShellCompletionService`) that queries native `CommandCompletion` in real time.
 
-### 🎭 3. Fully Accessible Interactive Screen (TUIs)
-Command-line interactive prompts (such as selecting models inside `agy /model` or answering prompts) are now fully intercepted. The WebView2 displays a beautiful, keyboard-accessible HTML `<dialog>` overlay. 
+* **Accessible Suggestion Navigation:** Browse authentic command, cmdlet, parameter, and file path suggestions using **Up/Down Arrows** with clear positional speech feedback (e.g., `"Item, 1 of 12"`), and press **Tab** or **Enter** to apply or **Escape** to dismiss.
 
-* **Navigation:** Focus is automatically trapped inside the dialog. Use **Arrow Keys** to navigate, **Space/Enter** to confirm, and **Escape** to cancel and resume the terminal session.
+### ✍️ 3. `Shift + Enter` Multi-Line Input & Quiet Decoupled Typing
+* **Multi-Line Command Drafting:** Press `Shift + Enter` in the Command Input box to draft and edit multi-line commands, scripts, or queries cleanly before pressing `Enter` to execute.
+* **Decoupled, Quiet Typing:** Removed UI binding echo loops so your screen reader announces your typing naturally without stuttering or repetition.
+* **Enhanced Session Navigation:** Reliable escape, dismissal, and cancellation handling in interactive command-line sessions.
 
-### ✍️ 4. Intelligent Bilingual & RTL Alignment
-Traditional Windows consoles struggle with Right-to-Left (RTL) languages like Arabic, visually reversing words or breaking mixed English/Arabic layouts. NexusShell v4.0.0 implements per-line directionality checking (`dir="auto"`). Arabic and mixed lines are visually aligned to the right and ordered correctly for sighted users, while keeping the logical sequence untouched so screen readers pronounce them perfectly.
+### 🔊 4. Isolated Audio Feedback
+* **Non-Interrupting Sound Engine:** Typing clicks (`KeyType`) and status chimes run on dedicated background threads so they never duck, clip, or interrupt screen reader speech synthesis.
 
 ### 🎵 5. Non-Intrusive Sound Effects
 Dynamic sound cues play on command execution, output updates, and opening/closing windows. These clicks and chimes are subtle, fast, and volume-scaled, providing valuable spatial awareness without interfering with speech synthesizers.
@@ -143,16 +145,28 @@ publishing the image yourself is covered under
 | Shortcut | Action |
 |----------|--------|
 | `Enter` | Run command (Terminal) / Send message (AI Chat) |
+<<<<<<< HEAD
 | `F1` | Open Help |
 | `F2 / Alt+S` | Open Settings |
+=======
+| `Shift + Enter` | Insert new line (Multi-line Terminal & AI Chat input) |
+| `F1` | Open Help documentation |
+| `F2 / Alt+S` | Open Settings categories |
+>>>>>>> c5026e0 (docs(release): align README and release notes with Help and About documentation)
 | `F6 / Escape` | Focus Command Input box / Toggle focus between terminal and input |
 | `Ctrl + T` | Open new terminal tab |
 | `Ctrl + L` | Clear terminal output |
-| `Ctrl + Shift + S` | Stop running command |
+| `Ctrl + Shift + S` | Toggle Execute / Stop command |
 | `Ctrl + F` | Search terminal output |
+<<<<<<< HEAD
 | `Arrow Keys` | Navigate options (Interactive Dialog) |
 | `Space / Enter` | Select option (Interactive Dialog) |
 | `Escape` | Dismiss dialog (Interactive Dialog) |
+=======
+| `Arrow Keys` | Navigate options (Interactive Menus & Suggestions) |
+| `Space / Enter` | Select & confirm option (Interactive Menus & Suggestions) |
+| `Escape` | Cancel / Dismiss (Interactive Menus & Suggestions) |
+>>>>>>> c5026e0 (docs(release): align README and release notes with Help and About documentation)
 
 ---
 
