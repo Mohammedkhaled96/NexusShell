@@ -53,7 +53,7 @@ jobs:
               $fileName = Split-Path $filePath -Leaf
               $hash = (Get-FileHash $filePath -Algorithm SHA256).Hash.ToLower()
               "$hash  $fileName" | Out-File "$filePath.sha256" -Encoding ascii
-              Write-Host "SHA256 of $fileName: $hash"
+              Write-Host "SHA256 of ${fileName}: $hash"
             } else {
               Write-Error "Expected file not found: $filePath"
             }
