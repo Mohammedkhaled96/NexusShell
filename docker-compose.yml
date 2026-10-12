@@ -1,0 +1,75 @@
+# ============================================================================
+#  NexusShell - Docker Compose
+#
+#  NexusShell is a WPF desktop app: it drives Win32 ConPTY, hosts Chromium
+#  through WebView2, encrypts its AI key with Windows DPAPI and speaks to NVDA
+#  and JAWS. A container has none of that, so there is no "up and browse it"
+#  service here and no port to expose. What Compose is good for in this
+#  repository is the two one-shot jobs around the release payload:
+#
+#    docker compose run --rm extract      copy the win-x64 build into ./out
+#    docker compose run --rm verify       check the payload's checksums
+#    docker compose --profile build build builder   compile from source (Windows
+#                                                   containers mode only)
+#
+#  Every service is `run --rm`, never `up`: each exits as soon as its job is
+#  done, so `docker compose up` would just report containers that stopped.
+# ============================================================================
+
+services:
+
+  # ---------------------------------------------------------------- extract
+  # Copies the published win-x64 build out of the image into ./out on the host.
+  # This is the service to use; the other two are for building and auditing.
+  extract:
+    image: ${NEXUSSHELL_IMAGE:-mohammedkhaledmahmoud/nexusshell}:${NEXUSSHELL_TAG:-latest}
+    # Only built locally when the image is absent, so the common case (someone
+    # who just pulled the published image) never triggers a build.
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        NEXUSSHELL_VERSION: ${NEXUSSHELL_VERSION:-4.1.1}
+    command: ["extract"]
+    volumes:
+      # Created on the host if missing. ./out is already in .gitignore.
+      - ./out:/out
+    # The payload is 200 MB+ of Windows binaries that the container only ever
+    # reads; nothing inside needs to write outside the mount.
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  # ----------------------------------------------------------------- verify
+  # Re-hashes every shipped file against the SHA256SUMS recorded when the image
+  # was built. Run it after pulling from a mirror, or before trusting a tag you
+  # did not push yourself. No volume: it inspects the image, not the host.
+  verify:
+    image: ${NEXUSSHELL_IMAGE:-mohammedkhaledmahmoud/nexusshell}:${NEXUSSHELL_TAG:-latest}
+    command: ["verify"]
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  # ---------------------------------------------------------------- builder
+  # Compiles from source inside a WINDOWS container. Behind a profile because it
+  # fails outright in Docker's default Linux mode and pulls a multi-GB Windows
+  # SDK base image - neither should happen to someone who typed a bare
+  # `docker compose build`.
+  #
+  #   docker compose --profile build build builder
+  #   docker compose --profile build run --rm builder
+  builder:
+    profiles: ["build"]
+    image: ${NEXUSSHELL_IMAGE:-mohammedkhaledmahmoud/nexusshell}:${NEXUSSHELL_TAG:-latest}-windows
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.build
+      args:
+        NEXUSSHELL_VERSION: ${NEXUSSHELL_VERSION:-4.1.1}
+    volumes:
+      - ./out:C:\out

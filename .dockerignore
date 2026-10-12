@@ -1,0 +1,27 @@
+# Keep the build context small and deterministic. Everything the image needs is
+# listed as an exception below; anything not listed never reaches the daemon.
+*
+
+# Source and build inputs (used by docker/Dockerfile.build, the Windows-container
+# build that compiles NexusShell from source inside the image).
+!NexusShell.sln
+!global.json
+!NuGet.config
+!Directory.Build.props
+!NexusShell.App/**
+
+# Prebuilt artifacts (used by docker/Dockerfile, the artifact image that carries
+# an already-published win-x64 build).
+!artifacts/publish/**
+
+# Docs shipped inside the image.
+!README.md
+!LICENSE
+!THIRD-PARTY-NOTICES.md
+!docker/entrypoint.sh
+
+# Re-exclude build leftovers that the NexusShell.App/** rule would otherwise pull
+# in. A stale bin/ or obj/ from a host build makes an in-container build
+# non-reproducible, which is exactly what this image exists to prevent.
+NexusShell.App/bin/
+NexusShell.App/obj/
