@@ -33,3 +33,31 @@ coverage*.xml
 *.pfx
 *.snk
 logs/
+
+# OS clutter (created automatically by Explorer / Finder)
+Thumbs.db
+ehthumbs.db
+desktop.ini
+.DS_Store
+
+# Logs and build diagnostics kept outside logs/
+*.log
+*.binlog
+
+# Crash dumps: large, machine-specific, and may contain in-memory secrets
+*.dmp
+*.mdmp
+
+# Local Docker overrides (personal paths / credentials by design)
+docker-compose.override.yml
+
+# Legacy NuGet restore folder
+packages/
+
+# ReSharper / Rider per-user caches
+_ReSharper*/
+*.DotSettings.user
+
+# Visual Studio coverage formats not matched by coverage*.xml
+*.coverage
+*.coveragexml
