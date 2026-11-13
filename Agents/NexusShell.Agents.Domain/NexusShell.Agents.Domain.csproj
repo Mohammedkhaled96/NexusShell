@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- DOMAIN LAYER
+       Pure business model of the agent system: providers, models, experts,
+       routing decisions, MCP server definitions, tool risk, secret references.
+       Rule: NO package references and NO references to other layers. -->
+
+</Project>

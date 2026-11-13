@@ -1,0 +1,18 @@
+<Project>
+
+  <!-- Inherit the solution-wide build rules (lock files, deterministic builds,
+       warnings-as-errors, NuGet audit) from the repository root. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!-- Shared settings for every NexusShell.Agents.* project. The agent layers are
+       plain net10.0 (no WPF / Windows TFM) so they stay portable: the same
+       Domain/Application/Infrastructure can later power a CLI or a server host. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>$(MSBuildProjectName)</RootNamespace>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+</Project>
