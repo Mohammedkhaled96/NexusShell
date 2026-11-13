@@ -190,10 +190,12 @@ namespace NexusShell.App.Views
 
         private void AddMessageViaJs(ChatMessage msg)
         {
-            string speaker = msg.SpeakerName.Replace("'", "\\'").Replace("\n", " ").Replace("\r", "");
-            string content = msg.Content.Replace("'", "\\'").Replace("\n", "\\n").Replace("\r", "\\r");
+            // JSON string literals are valid JavaScript string literals and escape
+            // everything (backslashes in Windows paths, quotes, newlines, '<' ...).
+            string speaker = System.Text.Json.JsonSerializer.Serialize(msg.SpeakerName.Replace("\r", "").Replace("\n", " "));
+            string content = System.Text.Json.JsonSerializer.Serialize(msg.Content);
             string isUser = msg.IsUser ? "true" : "false";
-            ChatWebView.ExecuteScriptAsync($"appendMessage('{speaker}', '{content}', {isUser})");
+            ChatWebView.ExecuteScriptAsync($"appendMessage({speaker}, {content}, {isUser})");
         }
 
         private void MessageInput_PreviewKeyDown(object sender, KeyEventArgs e)
