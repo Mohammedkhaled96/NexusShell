@@ -7,7 +7,8 @@ description: >-
   "add a command/shortcut", "terminal/ConPTY/pseudo-console", "terminal output /
   WebView2 / xterm.js renderer", "settings/config/settings.json",
   "AI/Groq/HttpClient", "sound effects", "toast notification", "API tester",
-  or anything under `NexusShell.App`. If the task touches this repo, FOLLOW THIS FILE.
+  "agent / NexusAgent / expert / sub-agent / skill / MCP / tool / mixture of experts",
+  or anything under `NexusShell.App` or `Agents/`. If the task touches this repo, FOLLOW THIS FILE.
 compatibility: ".NET 10 SDK (Windows Desktop) · TFM net10.0-windows10.0.19041.0 · WPF · WebView2 runtime · Windows 10 1903+ · x64 · v4.1.1"
 ---
 
@@ -32,6 +33,7 @@ NexusShell (`NexusShell.App`) is an enterprise-grade, blind-first Windows termin
           WebTerminal/terminal.html  ◄── RawOutputReceived / CommandStarted ◄── TerminalTabViewModel.OnTerminalOutput
           (WebView2: hidden xterm.js → accessible <pre class=command-output> command-blocks; squashes blank runs)
 
+  NexusAgent: AIChatViewModel (Agent mode) ─► INexusAgentService ─► Agents/* (Microsoft Agent Framework, see §8)
   Side services: AIService ─HTTP─► api.groq.com   ·   ConfigManager ◄─► %AppData%\NexusShell\settings.json
                  SoundService(Polyphonic)        ·   NotificationService(toast)  ·  WindowService(modeless windows)
                  ScreenReaderAnnouncer           ·   PowerShellCompletionService (Out-of-Process Runspace)
@@ -139,6 +141,9 @@ NexusShell maintains two distinct input paths:
 | `WebTerminal/xterm.js` | High-performance in-memory VT sequence resolution library. |
 | `Models/AppSettings.cs` | Application configuration data model (`settings.json`). |
 | `Audios/` | PCM WAV sound assets (copied to output). |
+| `Services/Agents/` | NexusAgent UI adapters: `WpfToolApprovalHandler`, `TerminalToolProvider` (agent tool category `terminal`). |
+| `Views/AgentKeysWindow.xaml`, `Views/ToolApprovalDialog.cs` | Agent secrets manager (user environment variables) and accessible tool-approval prompt. |
+| `../Agents/` | NexusAgent clean-architecture layers (Domain / Application / Infrastructure / Tests). See `Agents/README.md`. |
 
 ---
 
@@ -154,3 +159,22 @@ NexusShell maintains two distinct input paths:
 4. **Dual-Path Command Completion**:
    - Fast-Path: Detects authentic shell prompt in incoming stream when `!HasChildProcesses()`.
    - Watchdog-Path: `700ms` output silence + `LooksLikePrompt(tail)` fallback for long-running scripts.
+
+---
+
+## 8. NexusAgent — Microsoft Agent Framework (Agents/)
+
+Full guide: `Agents/README.md`. Summary:
+
+- **Layers (one project each, dependencies point inward):** `NexusShell.Agents.Domain` (no packages) ← `NexusShell.Agents.Application` (Microsoft.Agents.AI + Workflows; ports in `Abstractions/`) ← `NexusShell.Agents.Infrastructure` (providers, MCP, skills, tools, config, secrets) ← `NexusShell.App` (calls `services.AddNexusAgents()` only).
+- **Orchestration:** `moe` (default; gate → parallel experts → synthesizer), `coordinator` (lead expert + `ask_*` sub-agents), `sequential` (Agent Framework workflow).
+- **Content, not code:** experts = `Agent/experts/*.md`, skills = `Agent/skills/<name>/SKILL.md`, MCP = `mcp.json`, providers/policies = `agent.json`; user overrides in `%AppData%\NexusShell\agent\`.
+- **UI:** AI Chat → "Agent mode" checkbox (auto-on when a model is available), live status line (`StatusText`, polite live region), "Agent keys" window, `ToolApprovalDialog`.
+
+### Agent invariants (must not regress)
+1. **No secret values anywhere in code or config.** Only env var names (`apiKeyEnv`, `endpointEnv`, `${env:NAME}`). Values come from `ISecretStore` (user environment variables) at call time and are never logged.
+2. **Every risky tool goes through approval.** New tools declare an honest `ToolRisk`; shell/process tools use `ForceApproval: true`. Headless hosts keep `DenyAllToolApprovalHandler`.
+3. **Redaction stays in the tool middleware path** (`ToolInvocationMiddleware`) so secrets never reach a model provider.
+4. **Agent layers stay UI-free and use `ConfigureAwait(false)`;** UI work goes through ports implemented in `NexusShell.App` (`IToolApprovalHandler`, `IAgentToolProvider`).
+5. **Message author names must be id-style** (`expert.Id`) — providers reject spaces in `name`.
+6. **Every agent feature ships with a test** in `Agents/NexusShell.Agents.Tests` (integration tests run the real Agent Framework with a scripted `IChatClient`).
