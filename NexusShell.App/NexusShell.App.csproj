@@ -37,7 +37,8 @@
     <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
 
     <!-- Allocation pools -->
-    <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="10.0.8" />
+    <!-- >= 10.0.12 required by Microsoft Agent Framework (via Compliance.Abstractions). -->
+    <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="10.0.15" />
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
 
     <!-- Windows 10/11 native toast notifications (Action Center) -->
@@ -56,6 +57,13 @@
 
     <!-- PowerShell SDK for Native Dynamic Auto-Completion -->
     <PackageReference Include="System.Management.Automation" Version="7.4.6" />
+  </ItemGroup>
+
+  <!-- NexusAgent: Microsoft Agent Framework agent (Domain / Application /
+       Infrastructure layers). Brings the bundled experts, skills and agent.json
+       into the output folder under Agent\. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Agents\NexusShell.Agents.Infrastructure\NexusShell.Agents.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

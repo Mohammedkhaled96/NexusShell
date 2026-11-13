@@ -5,6 +5,7 @@ using NexusShell.App.ViewModels;
 using NexusShell.App.Views;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 
 namespace NexusShell.App.Services
@@ -290,10 +291,21 @@ namespace NexusShell.App.Services
             PlaySound(AppSound.OpenAI);
             var aiService = _serviceProvider.GetRequiredService<IAIService>();
             var configManager = _serviceProvider.GetRequiredService<IConfigManager>();
-            var viewModel = new AIChatViewModel(aiService, configManager, initialContext, contextLabel);
+            var agentService = _serviceProvider.GetService<NexusShell.Agents.Application.Conversations.INexusAgentService>();
+            var viewModel = new AIChatViewModel(aiService, configManager, initialContext, contextLabel, agentService, ShowAgentKeysWindow);
             var window    = new AIChatWindow(viewModel);
             VisualEffects.FadeInWindow(window);
             window.Show();
+        }
+
+        public void ShowAgentKeysWindow()
+        {
+            PlaySound(AppSound.OpenManager);
+            var viewModel = _serviceProvider.GetRequiredService<AgentKeysViewModel>();
+            var window = new AgentKeysWindow(viewModel);
+            var owner = Application.Current?.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive);
+            if (owner != null && owner != window) window.Owner = owner;
+            window.ShowDialog();
         }
 
         private ApiTesterWindow? _apiTesterWindow;

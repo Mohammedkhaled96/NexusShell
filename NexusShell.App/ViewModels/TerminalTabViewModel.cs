@@ -338,6 +338,20 @@ namespace NexusShell.App.ViewModels
             _windowService.ShowAIResponseWindow(label, cleaned);
         }
 
+        /// <summary>
+        /// Thread-safe copy of the most recent raw output (may contain VT escape
+        /// sequences). Used by the NexusAgent terminal tool.
+        /// </summary>
+        public string GetRecentOutput(int maxChars)
+        {
+            lock (_outputHistory)
+            {
+                int length = _outputHistory.Length;
+                int start = Math.Max(0, length - Math.Max(0, maxChars));
+                return _outputHistory.ToString(start, length - start);
+            }
+        }
+
         private void ExecuteChatAboutOutput(bool all)
         {
             string output;

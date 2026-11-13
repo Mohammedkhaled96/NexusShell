@@ -19,6 +19,7 @@ namespace NexusShell.App.Interfaces
         void ShowFlowsManagerWindow();
         void ShowAIResponseWindow(string title, string response);
         void ShowAIChatWindow(string initialContext = "", string contextLabel = "");
+        void ShowAgentKeysWindow();
         void ShowApiTesterWindow();
         Shortcut? ShowAddEditShortcutWindow(List<string> availableCommands, Shortcut? shortcut = null);
         EnvVariable? ShowAddEditEnvWindow(EnvVariable? variable = null);

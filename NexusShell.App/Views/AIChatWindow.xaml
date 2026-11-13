@@ -22,21 +22,43 @@
 
     <Grid Margin="20">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/> <!-- NexusAgent mode bar -->
             <RowDefinition Height="*"/>    <!-- Chat History / Web View -->
             <RowDefinition Height="Auto"/> <!-- Thinking Status -->
             <RowDefinition Height="Auto"/> <!-- Input Area -->
             <RowDefinition Height="Auto"/> <!-- Global Actions -->
         </Grid.RowDefinitions>
 
+        <!-- NexusAgent (Microsoft Agent Framework, mixture of experts) -->
+        <Grid Grid.Row="0" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <CheckBox x:Name="AgentModeCheckBox"
+                      Grid.Column="0"
+                      Content="_Agent mode (experts, tools, MCP)"
+                      IsChecked="{Binding UseAgent}"
+                      IsEnabled="{Binding IsAgentAvailable}"
+                      Foreground="#E0E0E0" FontSize="13" VerticalAlignment="Center" Margin="0,0,16,0"
+                      AutomationProperties.Name="Agent mode: answer with NexusAgent experts, tools and MCP servers"
+                      AutomationProperties.HelpText="When unchecked, the classic NexusAI chat answers." />
+            <TextBlock Grid.Column="1"
+                       Text="{Binding AgentStatus}"
+                       Foreground="#9E9E9E" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
+                       AutomationProperties.LiveSetting="Polite"
+                       AutomationProperties.Name="{Binding AgentStatus}" />
+        </Grid>
+
         <!-- Chat Experience Area -->
-        <Border Grid.Row="0" Background="#121212" BorderBrush="#333" BorderThickness="1">
+        <Border Grid.Row="1" Background="#121212" BorderBrush="#333" BorderThickness="1">
             <wv2:WebView2 x:Name="ChatWebView" AutomationProperties.Name="Chat Conversation History" />
         </Border>
 
         <!-- Thinking Indicator -->
         <TextBlock x:Name="ThinkingIndicator"
-                   Grid.Row="1"
-                   Text="NexusAI is generating response..."
+                   Grid.Row="2"
+                   Text="{Binding StatusText}"
                    Foreground="#007ACC"
                    FontSize="13"
                    FontWeight="Bold"
@@ -46,7 +68,7 @@
                    AutomationProperties.Name="Status Indicator" />
 
         <!-- User Input Area -->
-        <Border Grid.Row="2" Background="#1E1E1E" BorderBrush="#444" BorderThickness="1" CornerRadius="4" Padding="5">
+        <Border Grid.Row="3" Background="#1E1E1E" BorderBrush="#444" BorderThickness="1" CornerRadius="4" Padding="5">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -85,8 +107,18 @@
         </Border>
 
         <!-- Utility Footer -->
-        <Grid Grid.Row="3" Margin="0,15,0,0">
+        <Grid Grid.Row="4" Margin="0,15,0,0">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="S_top"
+                        Command="{Binding StopCommand}"
+                        Visibility="{Binding IsSending, Converter={StaticResource BoolToVis}}"
+                        Background="#8B2E2E" Foreground="White" BorderThickness="0" Padding="14,4" Margin="0,0,25,0" Cursor="Hand"
+                        AutomationProperties.Name="Stop waiting for the answer"
+                        AutomationProperties.HelpText="Cancels the current request." />
+                <Button Content="Agent _Keys"
+                        Command="{Binding ManageAgentKeysCommand}"
+                        Background="Transparent" Foreground="#999" BorderThickness="0" Margin="0,0,25,0" Cursor="Hand"
+                        AutomationProperties.Name="Manage NexusAgent API keys and tokens" />
                 <Button Content="Clear Chat"
                         Command="{Binding ClearChatCommand}"
                         Background="Transparent" Foreground="#999" BorderThickness="0" Margin="0,0,25,0" Cursor="Hand"

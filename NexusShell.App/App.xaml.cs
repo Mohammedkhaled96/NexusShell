@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using NexusShell.Agents.Infrastructure;
 using NexusShell.App.Interfaces;
 using NexusShell.App.Services;
 using NexusShell.App.ViewModels;
@@ -89,7 +90,18 @@ namespace NexusShell.App
             })
             .AddStandardResilienceHandler();
             services.AddSingleton<IApiTesterService, ApiTesterService>();
-            
+
+            // NexusAgent — Microsoft Agent Framework (clean-architecture layers in /Agents):
+            // mixture-of-experts orchestration, sub-agents, skills, MCP servers, tools,
+            // local + online models. Secrets come only from user environment variables.
+            // The WPF approval dialog is registered first so it replaces the
+            // framework's secure "deny all" default.
+            services.AddSingleton<NexusShell.Agents.Application.Abstractions.Approval.IToolApprovalHandler,
+                                  Services.Agents.WpfToolApprovalHandler>();
+            services.AddNexusAgents();
+            services.AddAgentToolProvider<Services.Agents.TerminalToolProvider>();
+            services.AddTransient<AgentKeysViewModel>();
+
             services.AddSingleton<IOutputHistoryService, OutputHistoryService>();
             services.AddSingleton<INotificationService, NotificationService>();
             services.AddSingleton<ISoundService, SoundService>();
