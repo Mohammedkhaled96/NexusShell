@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- APPLICATION LAYER
+       Use cases and orchestration: Mixture-of-Experts gating + synthesis,
+       sub-agents, middleware, tool approval, conversations.
+       Depends on Domain and on the Microsoft Agent Framework abstractions only.
+       Everything that touches the outside world (HTTP, processes, files,
+       environment variables, MCP transports) is a PORT (interface) declared in
+       Abstractions/ and implemented by the Infrastructure layer. -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\NexusShell.Agents.Domain\NexusShell.Agents.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Microsoft Agent Framework: AIAgent, ChatClientAgent, sessions, skills,
+         middleware (AIAgentBuilder), tool approval, context providers. -->
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.28.0" />
+    <!-- Agent Framework workflows: used for the Sequential orchestration mode. -->
+    <PackageReference Include="Microsoft.Agents.AI.Workflows" Version="1.28.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="NexusShell.Agents.Tests" />
+  </ItemGroup>
+
+</Project>
