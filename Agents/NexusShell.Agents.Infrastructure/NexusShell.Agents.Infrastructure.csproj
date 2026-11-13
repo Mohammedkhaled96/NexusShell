@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- INFRASTRUCTURE LAYER
+       Adapters for the Application ports: model providers (OpenAI, Azure OpenAI,
+       Anthropic, Ollama, any OpenAI-compatible endpoint), MCP client, file-based
+       skills, built-in tools, JSON/Markdown configuration, and the
+       environment-variable secret store. -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\NexusShell.Agents.Application\NexusShell.Agents.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Providers -->
+    <PackageReference Include="Microsoft.Agents.AI.OpenAI" Version="1.28.0" />
+    <PackageReference Include="Microsoft.Agents.AI.Anthropic" Version="1.28.0" />
+    <PackageReference Include="OllamaSharp" Version="5.5.2" />
+
+    <!-- Model Context Protocol client (stdio + streamable HTTP transports) -->
+    <PackageReference Include="ModelContextProtocol.Core" Version="2.4.0" />
+
+    <!-- IHttpClientFactory (same version line as NexusShell.App) -->
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="NexusShell.Agents.Tests" />
+  </ItemGroup>
+
+  <!-- Bundled defaults (agent.json, instructions, experts, skills). Copied next to
+       the executable of every host that references this project, under Agent\.
+       Users extend or override them in %AppData%\NexusShell\agent. -->
+  <ItemGroup>
+    <Content Include="Agent\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

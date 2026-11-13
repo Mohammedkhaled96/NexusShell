@@ -1,0 +1,128 @@
+{
+  // NexusShell agent - bundled defaults.
+  // Override any field in %AppData%\NexusShell\agent\agent.json (only the fields you write are overridden).
+  //
+  // SECRETS: this file only contains environment variable NAMES ("apiKeyEnv", "endpointEnv").
+  // Never put a key here: providers containing literal secrets are rejected at load time.
+
+  "orchestration": {
+    // moe         = gate picks the top-k experts, they run in parallel, answers are merged (default)
+    // coordinator = the coordinator expert answers and delegates to the others as sub-agents
+    // sequential  = fixed pipeline of experts ("sequence")
+    "mode": "moe",
+    "router": {
+      "strategy": "hybrid",   // keyword | llm | hybrid
+      "model": "fast",        // "fast" = each provider's fastModel (quick routing); or e.g. "ollama/llama3.2" for free, private routing
+      "topK": 2,
+      "minScore": 0.25,
+      "timeoutSeconds": 20
+    },
+    "synthesizerModel": "auto",
+    "defaultExpert": "general",
+    "coordinatorExpert": "general",
+    "sequence": [ "code-expert", "reviewer" ],
+    "maxSubAgentDepth": 2,
+    "maxApprovalRounds": 8,
+    "sharedHistoryTurns": 8,
+    "expertMemoryMessages": 40
+  },
+
+  "models": {
+    // "auto" resolves to the first AVAILABLE entry: a remote provider is available when its
+    // API key variable is set; a local provider when its server answers.
+    // Entries are "provider" (its defaultModel) or "provider/model".
+    "preference": [
+      "anthropic",
+      "openai",
+      "azure-openai",
+      "gemini",
+      "groq",
+      "openrouter",
+      "deepseek",
+      "mistral",
+      "ollama"
+    ]
+  },
+
+  "providers": {
+    "openai": {
+      "kind": "openai",
+      "apiKeyEnv": "OPENAI_API_KEY",
+      "defaultModel": "gpt-5-mini",
+      "fallbackModels": [ "gpt-4.1-mini", "gpt-4o-mini" ],
+      "fastModel": "gpt-5-nano"
+    },
+    "azure-openai": {
+      "kind": "azure-openai",
+      "endpointEnv": "AZURE_OPENAI_ENDPOINT",   // endpoint URL of your Azure OpenAI resource
+      "apiKeyEnv": "AZURE_OPENAI_API_KEY",
+      "defaultModel": "gpt-5-mini"               // Azure deployment name
+    },
+    "anthropic": {
+      "kind": "anthropic",
+      "apiKeyEnv": "ANTHROPIC_API_KEY",
+      "defaultModel": "claude-sonnet-5-5",
+      "fallbackModels": [ "claude-haiku-5-5", "claude-opus-5-5" ],
+      "fastModel": "claude-haiku-5-5"
+    },
+    "gemini": {
+      "kind": "openai-compatible",
+      "endpoint": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "apiKeyEnv": "GEMINI_API_KEY",
+      "defaultModel": "gemini-3.5-flash",
+      // Tried in order if the default is retired, not enabled for your key, or overloaded.
+      "fallbackModels": [ "gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-flash-lite-latest" ],
+      "fastModel": "gemini-3.5-flash-lite"
+    },
+    "groq": {
+      "kind": "openai-compatible",
+      "endpoint": "https://api.groq.com/openai/v1",
+      "apiKeyEnv": "GROQ_API_KEY",
+      "defaultModel": "openai/gpt-oss-120b",   // standard tier, supports tool calling
+      "fallbackModels": [ "openai/gpt-oss-20b", "llama-3.3-70b-versatile" ],
+      "fastModel": "openai/gpt-oss-20b"
+    },
+    "openrouter": {
+      "kind": "openai-compatible",
+      "endpoint": "https://openrouter.ai/api/v1",
+      "apiKeyEnv": "OPENROUTER_API_KEY",
+      "defaultModel": "openrouter/auto"
+    },
+    "deepseek": {
+      "kind": "openai-compatible",
+      "endpoint": "https://api.deepseek.com/v1",
+      "apiKeyEnv": "DEEPSEEK_API_KEY",
+      "defaultModel": "deepseek-chat"
+    },
+    "mistral": {
+      "kind": "openai-compatible",
+      "endpoint": "https://api.mistral.ai/v1",
+      "apiKeyEnv": "MISTRAL_API_KEY",
+      "defaultModel": "mistral-large-latest",
+      "fastModel": "mistral-small-latest"
+    },
+    "ollama": {
+      "kind": "ollama",
+      "endpoint": "http://localhost:11434",
+      "local": true,
+      "defaultModel": "llama3.2"
+    },
+    "lmstudio": {
+      "kind": "openai-compatible",
+      "endpoint": "http://localhost:1234/v1",
+      "local": true
+      // set "defaultModel" to the id of the model loaded in LM Studio, then add "lmstudio" to models.preference
+    }
+  },
+
+  "tools": {
+    // Risk levels that run WITHOUT asking: readOnly | network | mutating | destructive.
+    // run_shell_command and MCP tools (unless auto-approved in mcp.json) always ask.
+    "autoApprove": [ "readOnly" ]
+  },
+
+  "skills": {
+    // Allow skills to run their bundled scripts (each run still asks for approval).
+    "enableScripts": false
+  }
+}
