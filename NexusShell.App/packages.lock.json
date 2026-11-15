@@ -89,9 +89,9 @@
       },
       "Microsoft.IO.RecyclableMemoryStream": {
         "type": "Direct",
-        "requested": "[3.0.1, )",
-        "resolved": "3.0.1",
-        "contentHash": "s/s20YTVY9r9TPfTrN5g8zPF1YhwxyqO6PxUkrYTGI2B+OGPe9AdajWZrLhFqXIvqIW23fnUE4+ztrUWNU1+9g=="
+        "requested": "[4.0.1, )",
+        "resolved": "4.0.1",
+        "contentHash": "+AgZ8B7QIcy2MZyqp1eeJlSgt03h0oyPeEhNWb1aAdgV9C0l8HdboJ1yt/DMu9qv7HTOA18WJUzKWB3j/WlTqg=="
       },
       "Microsoft.Toolkit.Uwp.Notifications": {
         "type": "Direct",
