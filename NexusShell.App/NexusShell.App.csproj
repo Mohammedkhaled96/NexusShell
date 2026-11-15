@@ -19,8 +19,8 @@
   <ItemGroup>
     <!-- Existing -->
     <PackageReference Include="Autoupdater.NET.Official" Version="1.9.2" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.8" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="11.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="11.0.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
@@ -29,15 +29,15 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
 
     <!-- HTTP resilience -->
-    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.8" />
-    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.6.0" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="11.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="11.0.0" />
 
     <!-- Logging async + dev console sink -->
     <PackageReference Include="Serilog.Sinks.Async" Version="2.1.0" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
 
     <!-- Allocation pools -->
-    <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="11.0.0" />
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
 
     <!-- Windows 10/11 native toast notifications (Action Center) -->
