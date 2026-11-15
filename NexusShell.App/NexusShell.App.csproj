@@ -38,7 +38,7 @@
 
     <!-- Allocation pools -->
     <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="10.0.8" />
-    <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
+    <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="4.0.1" />
 
     <!-- Windows 10/11 native toast notifications (Action Center) -->
     <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
