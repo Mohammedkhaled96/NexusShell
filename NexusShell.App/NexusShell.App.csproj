@@ -46,7 +46,7 @@
     <!-- Embedded Chromium host for the xterm.js terminal renderer.
          xterm.js (a real VT emulator) resolves the raw ConPTY stream into a clean
          terminal grid, replacing the old AvalonEdit + filter-pipeline display. -->
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
 
     <!-- Source-generated P/Invoke (build-time only) -->
     <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.275">
