@@ -1,6 +1,10 @@
 using NexusShell.App.Models;
+using NexusShell.App.Services;
 using NexusShell.App.ViewModels;
+using AgentAttachment = NexusShell.App.ViewModels.AttachmentItem;
 using System;
+using System.Windows.Automation;
+using System.Windows.Automation.Peers;
 using System.Collections.Specialized;
 using System.Text;
 using System.Windows;
@@ -14,17 +18,68 @@ namespace NexusShell.App.Views
         private bool _isWebViewInitialized = false;
         private bool _isFirstLoad = true;
 
-        public AIChatWindow(AIChatViewModel viewModel)
+        private readonly IScreenReaderAnnouncer? _announcer;
+
+        // Only one chat narrates ordinary steps at a time: the one where the user sent the
+        // latest message. Other chats still announce approvals and their final result.
+        private static AIChatWindow? _narratingWindow;
+
+        public AIChatWindow(AIChatViewModel viewModel, IScreenReaderAnnouncer? announcer = null)
         {
             InitializeComponent();
             _viewModel = viewModel;
+            _announcer = announcer;
             DataContext = _viewModel;
 
             ChatWebView.DefaultBackgroundColor = System.Drawing.Color.FromArgb(18, 18, 18);
             InitializeWebView();
 
             _viewModel.Messages.CollectionChanged += OnMessagesChanged;
+            _viewModel.SpeakRequested += SpeakAgentStep;
+            _viewModel.AgentRunStarted += MakeNarratingWindow;
             Loaded += (s, e) => MessageInput.Focus();
+            Closed += (s, e) =>
+            {
+                _viewModel.SpeakRequested -= SpeakAgentStep;
+                _viewModel.AgentRunStarted -= MakeNarratingWindow;
+                if (ReferenceEquals(_narratingWindow, this)) _narratingWindow = null;
+                _viewModel.Shutdown();
+            };
+        }
+
+        /// <summary>
+        /// Speaks an agent step: directly through NVDA / JAWS when available, otherwise as
+        /// a UI Automation notification raised by THIS window (the foreground one, so
+        /// screen readers do not ignore it). Processing.All queues every step instead of
+        /// letting a newer one replace an older one.
+        /// </summary>
+        private void MakeNarratingWindow() => _narratingWindow = this;
+
+        private void SpeakAgentStep(string text, bool important)
+        {
+            // Another chat is the one the user is waiting on: stay quiet except for what matters here.
+            if (!important && _narratingWindow is not null && !ReferenceEquals(_narratingWindow, this))
+            {
+                Serilog.Log.Information("Agent step held back (another chat is narrating): {Step}", text);
+                return;
+            }
+
+            Serilog.Log.Information("Agent step spoken: {Step}", text);
+            try
+            {
+                if (_announcer?.TryAnnounceDirect(text) == true) return;
+
+                var peer = UIElementAutomationPeer.FromElement(this) ?? UIElementAutomationPeer.CreatePeerForElement(this);
+                peer?.RaiseNotificationEvent(
+                    AutomationNotificationKind.Other,
+                    AutomationNotificationProcessing.All,
+                    text,
+                    "NexusAgentStep");
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Debug(ex, "Agent step announcement failed.");
+            }
         }
 
         private async void InitializeWebView()
@@ -208,5 +263,99 @@ namespace NexusShell.App.Views
         }
 
         private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
+
+        // ---------- Agent workspace: folder, attachments, capabilities ----------
+
+        private void ChooseFolder_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new Microsoft.Win32.OpenFolderDialog
+            {
+                Title = "Choose the folder NexusAgent works in",
+                InitialDirectory = _viewModel.Workspace.WorkingDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            };
+            if (dialog.ShowDialog(this) == true) _viewModel.Workspace.SetWorkingDirectory(dialog.FolderName);
+        }
+
+        private void AttachFiles_Click(object sender, RoutedEventArgs e) => AttachFiles();
+
+        private void AttachFolder_Click(object sender, RoutedEventArgs e) => AttachFolders();
+
+        private void AttachFiles()
+        {
+            var dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Attach files to your next message",
+                Multiselect = true,
+                CheckFileExists = true,
+                InitialDirectory = _viewModel.Workspace.WorkingDirectory ?? string.Empty,
+                Filter = "All files|*.*|Code and text|*.cs;*.ps1;*.py;*.js;*.ts;*.json;*.xml;*.yml;*.yaml;*.md;*.txt;*.log;*.csv;*.sql;*.sh;*.cmd;*.bat;*.config;*.ini",
+            };
+            if (dialog.ShowDialog(this) == true) AnnounceAttached(_viewModel.Workspace.AddAttachments(dialog.FileNames));
+        }
+
+        private void AttachFolders()
+        {
+            var dialog = new Microsoft.Win32.OpenFolderDialog
+            {
+                Title = "Attach folders to your next message",
+                Multiselect = true,
+                InitialDirectory = _viewModel.Workspace.WorkingDirectory ?? string.Empty,
+            };
+            if (dialog.ShowDialog(this) == true) AnnounceAttached(_viewModel.Workspace.AddAttachments(dialog.FolderNames));
+        }
+
+        private void AnnounceAttached(int added)
+        {
+            string text = added == 0
+                ? "Nothing new was attached."
+                : $"{added} attached. {_viewModel.Workspace.AttachmentsSummary}.";
+            _viewModel.Announce(text);
+            MessageInput.Focus();
+        }
+
+        private void Capabilities_Click(object sender, RoutedEventArgs e)
+        {
+            var window = new AgentCapabilitiesWindow(_viewModel.Workspace) { Owner = this };
+            if (window.ShowDialog() == true) _viewModel.Workspace.ApplyCapabilities();
+        }
+
+        private void AttachmentsList_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key is not (Key.Delete or Key.Back) || AttachmentsList.SelectedItem is not AgentAttachment) return;
+            int index = AttachmentsList.SelectedIndex;
+            _viewModel.RemoveAttachmentCommand.Execute(AttachmentsList.SelectedItem);
+            e.Handled = true;
+            if (AttachmentsList.Items.Count > 0)
+            {
+                AttachmentsList.SelectedIndex = Math.Min(index, AttachmentsList.Items.Count - 1);
+                (AttachmentsList.ItemContainerGenerator.ContainerFromIndex(AttachmentsList.SelectedIndex) as UIElement)?.Focus();
+            }
+            else
+            {
+                MessageInput.Focus();
+            }
+        }
+
+        private void Window_DragOver(object sender, DragEventArgs e)
+        {
+            e.Effects = _viewModel.UseAgent && e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+            e.Handled = true;
+        }
+
+        private void Window_Drop(object sender, DragEventArgs e)
+        {
+            if (!_viewModel.UseAgent || e.Data.GetData(DataFormats.FileDrop) is not string[] paths) return;
+            AnnounceAttached(_viewModel.Workspace.AddAttachments(paths));
+            e.Handled = true;
+        }
+
+        /// <summary>Ctrl+O attaches files, Ctrl+Shift+O attaches a folder (agent mode only).</summary>
+        private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.O || !Keyboard.Modifiers.HasFlag(ModifierKeys.Control) || !_viewModel.UseAgent) return;
+            e.Handled = true;
+            if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) AttachFolders();
+            else AttachFiles();
+        }
     }
 }

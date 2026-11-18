@@ -101,6 +101,7 @@ namespace NexusShell.App
             services.AddNexusAgents();
             services.AddAgentToolProvider<Services.Agents.TerminalToolProvider>();
             services.AddTransient<AgentKeysViewModel>();
+            services.AddTransient<AgentProvidersViewModel>();
 
             services.AddSingleton<IOutputHistoryService, OutputHistoryService>();
             services.AddSingleton<INotificationService, NotificationService>();

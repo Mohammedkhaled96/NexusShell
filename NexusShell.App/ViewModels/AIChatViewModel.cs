@@ -1,20 +1,26 @@
 using NexusShell.Agents.Application.Conversations;
 using NexusShell.Agents.Application.Progress;
 using NexusShell.Agents.Domain.Orchestration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NexusShell.App.Commands;
 using NexusShell.App.Interfaces;
 using NexusShell.App.Models;
+using NexusShell.App.Services.Agents;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 
 namespace NexusShell.App.ViewModels
 {
-    public class AIChatViewModel : ViewModelBase
+    public partial class AIChatViewModel : ViewModelBase
     {
         private const string DefaultStatusText = "NexusAI is generating response...";
 
@@ -22,6 +28,7 @@ namespace NexusShell.App.ViewModels
         private readonly IConfigManager _configManager;
         private readonly INexusAgentService? _agentService;
         private readonly Action? _openAgentKeys;
+        private readonly Action? _openProviders;
         private readonly string _initialContext;
         private readonly List<Dictionary<string, string>> _history;
 
@@ -30,17 +37,28 @@ namespace NexusShell.App.ViewModels
         private bool _userChoseMode;
         private CancellationTokenSource? _sendCts;
 
+        // Speaks each agent step (experts, tools, approvals, model switches) while the user waits.
+        private readonly AgentStepAnnouncer _steps;
+
         private string _userLabel = "You";
         private string _aiLabel = "NexusAI";
         private const string AgentLabel = "NexusAgent";
+        private const string ShellLabel = "NexusShell";
 
         public ObservableCollection<ChatMessage> Messages { get; } = new();
+
+        /// <summary>Model, expert, permissions, working folder, attachments and capabilities of the agent.</summary>
+        public AgentWorkspaceViewModel Workspace { get; }
 
         private string _currentMessage = "";
         public string CurrentMessage
         {
             get => _currentMessage;
-            set => SetProperty(ref _currentMessage, value);
+            set
+            {
+                // Text set without typing (dictation, paste through UI Automation) must enable Send too.
+                if (SetProperty(ref _currentMessage, value)) CommandManager.InvalidateRequerySuggested();
+            }
         }
 
         private bool _isSending;
@@ -74,10 +92,42 @@ namespace NexusShell.App.ViewModels
         private string _agentStatus = "Checking NexusAgent...";
         public string AgentStatus { get => _agentStatus; set => SetProperty(ref _agentStatus, value); }
 
+        /// <summary>Speak every agent step through the screen reader while waiting (saved in settings).</summary>
+        private bool _speakAgentSteps;
+        public bool SpeakAgentSteps
+        {
+            get => _speakAgentSteps;
+            set
+            {
+                if (!SetProperty(ref _speakAgentSteps, value)) return;
+                try
+                {
+                    var settings = _configManager.Load();
+                    settings.AI.AnnounceAgentSteps = value;
+                    _configManager.Save(settings);
+                }
+                catch (Exception)
+                {
+                    // Preference still applies for this window even if it could not be saved.
+                }
+            }
+        }
+
+        /// <summary>Raised with (text, important) the screen reader should speak now (the view delivers it).</summary>
+        public event Action<string, bool>? SpeakRequested;
+
+        /// <summary>Raised when this chat starts an agent request (the view makes itself the narrating window).</summary>
+        public event Action? AgentRunStarted;
+
         public ICommand SendMessageCommand { get; }
         public ICommand ClearChatCommand   { get; }
         public ICommand CopyMessageCommand { get; }
         public ICommand ManageAgentKeysCommand { get; }
+        public ICommand ManageProvidersCommand { get; }
+        public ICommand RefreshAgentCommand { get; }
+        public ICommand ClearWorkingFolderCommand { get; }
+        public ICommand RemoveAttachmentCommand { get; }
+        public ICommand ClearAttachmentsCommand { get; }
         public ICommand StopCommand { get; }
 
         // Fired when a new message is added — view subscribes to scroll to bottom
@@ -89,16 +139,28 @@ namespace NexusShell.App.ViewModels
             string initialContext = "",
             string contextLabel = "",
             INexusAgentService? agentService = null,
-            Action? openAgentKeys = null)
+            Action? openAgentKeys = null,
+            ILoggerFactory? loggerFactory = null,
+            Action? openProviders = null)
         {
             _aiService = aiService;
             _configManager = configManager;
             _agentService = agentService;
             _openAgentKeys = openAgentKeys;
+            _openProviders = openProviders;
             _initialContext = initialContext ?? string.Empty;
 
             var settings = _configManager.Load();
             SetupLocalization(settings.AI.Language);
+            _speakAgentSteps = settings.AI.AnnounceAgentSteps;
+            _steps = new AgentStepAnnouncer(
+                (text, important) => SpeakRequested?.Invoke(text, important),
+                () => SpeakAgentSteps,
+                (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<AgentStepAnnouncer>());
+
+            Workspace = new AgentWorkspaceViewModel(configManager);
+            Workspace.OptionsChanged += OnWorkspaceChanged;
+            Workspace.Attachments.CollectionChanged += (_, _) => CommandManager.InvalidateRequerySuggested();
 
             var systemPrompt =
                 "You are NexusAI, an expert Windows terminal assistant embedded inside NexusShell.\n" +
@@ -149,10 +211,38 @@ namespace NexusShell.App.ViewModels
                 async _ =>
                 {
                     _openAgentKeys?.Invoke();
-                    _conversation = null; // pick up new keys / models on the next message
-                    await RefreshAgentStatusAsync();
+                    await ReloadAgentAsync();
                 },
                 _ => _openAgentKeys != null);
+
+            ManageProvidersCommand = new RelayCommand(
+                async _ =>
+                {
+                    _openProviders?.Invoke();
+                    await ReloadAgentAsync();
+                },
+                _ => _openProviders != null);
+
+            RefreshAgentCommand = new RelayCommand(async _ =>
+            {
+                await ReloadAgentAsync();
+                Speak($"Agent refreshed. {Workspace.Models.Count(m => m.Value is not null && m.IsAvailable)} models available. {AgentStatus}");
+            });
+
+            ClearWorkingFolderCommand = new RelayCommand(_ => Workspace.SetWorkingDirectory(null), _ => Workspace.HasWorkingDirectory);
+
+            RemoveAttachmentCommand = new RelayCommand(item =>
+            {
+                if (item is not AttachmentItem attachment) return;
+                Workspace.RemoveAttachment(attachment);
+                Speak($"Removed {attachment.Name}. {Workspace.AttachmentsSummary}.");
+            }, item => item is AttachmentItem);
+
+            ClearAttachmentsCommand = new RelayCommand(_ =>
+            {
+                Workspace.TakeAttachments();
+                Speak("Attachments removed.");
+            }, _ => Workspace.HasAttachments);
 
             // Greet the user
             string greeting;
@@ -199,6 +289,12 @@ namespace NexusShell.App.ViewModels
             MessageAdded?.Invoke();
         }
 
+        /// <summary>Speaks a short confirmation now (always, even when step narration is off).</summary>
+        private void Speak(string text) => SpeakRequested?.Invoke(text, true);
+
+        /// <summary>Lets the view announce results of its own actions (file pickers, drag and drop).</summary>
+        public void Announce(string text) => Speak(text);
+
         /// <summary>Checks whether any model (API key or local server) is available and switches Agent mode on accordingly.</summary>
         private async Task RefreshAgentStatusAsync()
         {
@@ -217,7 +313,7 @@ namespace NexusShell.App.ViewModels
 
                 AgentStatus = IsAgentAvailable
                     ? $"NexusAgent ready ({ModeName(health.Mode)}): {health.Experts.Count(e => e.Enabled && e.Routable)} experts; models from {string.Join(", ", ready)}."
-                    : "NexusAgent needs a model: add an API key with the Agent keys button, or start Ollama.";
+                    : "NexusAgent needs a model: add a provider or an API key, or start a local model server such as Ollama or LM Studio.";
 
                 if (health.Warnings.Count > 0)
                     AgentStatus += $" {health.Warnings.Count} configuration warning(s) are listed in the log.";
@@ -227,11 +323,87 @@ namespace NexusShell.App.ViewModels
                     _useAgent = IsAgentAvailable;
                     OnPropertyChanged(nameof(UseAgent));
                 }
+
+                await Workspace.LoadAsync(_agentService);
+                // Choices restored from settings now apply to a conversation started before the lists loaded.
+                if (_conversation is not null) await _conversation.UpdateOptionsAsync(Workspace.BuildOptions());
             }
             catch (Exception ex)
             {
                 IsAgentAvailable = false;
                 AgentStatus = "NexusAgent could not start: " + ex.Message;
+            }
+        }
+
+        /// <summary>New keys, providers or models: reload the configuration and keep the conversation.</summary>
+        private async Task ReloadAgentAsync()
+        {
+            _agentService?.ReloadConfiguration();
+            await RefreshAgentStatusAsync();
+            if (_conversation is not null)
+            {
+                try
+                {
+                    await _conversation.ReloadAsync();
+                }
+                catch (Exception ex)
+                {
+                    Serilog.Log.Warning(ex, "Agent conversation could not be reloaded; starting a new one on the next message.");
+                    _conversation = null;
+                }
+            }
+        }
+
+        // While a slash command runs, its confirmation is shown in the chat and spoken once by the command.
+        private bool _runningCommand;
+        private string? _commandEcho;
+
+        // Arrowing through a combo box changes the choice on every key press: wait until the user
+        // settles before speaking the confirmation and rebuilding the agent, so the screen reader
+        // is not interrupted on each item.
+        private static readonly TimeSpan WorkspaceSettleDelay = TimeSpan.FromMilliseconds(1200);
+        private CancellationTokenSource? _workspaceDebounce;
+
+        private void OnWorkspaceChanged(string announcement)
+        {
+            _workspaceDebounce?.Cancel();
+            if (_runningCommand)
+            {
+                _commandEcho = announcement;
+                _ = ApplyWorkspaceAsync();
+                return;
+            }
+
+            var debounce = _workspaceDebounce = new CancellationTokenSource();
+            _ = AnnounceWhenSettledAsync(announcement, debounce.Token);
+        }
+
+        private async Task AnnounceWhenSettledAsync(string announcement, CancellationToken token)
+        {
+            try
+            {
+                await Task.Delay(WorkspaceSettleDelay, token);
+            }
+            catch (OperationCanceledException)
+            {
+                return; // a newer choice replaced this one
+            }
+            Speak(announcement);
+            await ApplyWorkspaceAsync();
+        }
+
+        private async Task ApplyWorkspaceAsync()
+        {
+            if (_conversation is null) return; // applied when the conversation starts
+            try
+            {
+                // Waits for a running turn to finish; history is kept.
+                await _conversation.UpdateOptionsAsync(Workspace.BuildOptions());
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Warning(ex, "Agent options could not be applied.");
+                AddAiMessage("Could not apply the new agent settings: " + ex.Message, ShellLabel);
             }
         }
 
@@ -247,20 +419,38 @@ namespace NexusShell.App.ViewModels
             var msg = CurrentMessage.Trim();
             if (string.IsNullOrEmpty(msg)) return;
 
+            if (await TryRunSlashCommandAsync(msg))
+            {
+                CurrentMessage = "";
+                return;
+            }
+
             CurrentMessage = "";
             IsSending = true;
             _sendCts = new CancellationTokenSource();
             var token = _sendCts.Token;
 
-            AddUserMessage(msg);
+            bool viaAgent = UseAgent && _agentService is not null;
+
+            // Files and folders for this message: attached ones plus @mentions ("explain @src\Program.cs").
+            IReadOnlyList<string> attachments = [];
+            if (viaAgent)
+            {
+                Workspace.AddAttachments(FindMentions(msg));
+                attachments = Workspace.TakeAttachments();
+            }
+
+            AddUserMessage(attachments.Count == 0
+                ? msg
+                : msg + "\n\nAttached: " + string.Join(", ", attachments.Select(Path.GetFileName)));
             _history.Add(new() { ["role"] = "user", ["content"] = msg });
 
             try
             {
                 string response;
-                if (UseAgent && _agentService is not null)
+                if (viaAgent)
                 {
-                    response = await SendViaAgentAsync(msg, token);
+                    response = await SendViaAgentAsync(msg, attachments, token);
                 }
                 else
                 {
@@ -278,10 +468,12 @@ namespace NexusShell.App.ViewModels
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
                 _history.RemoveAt(_history.Count - 1);
+                if (viaAgent) _steps.Stopped();
                 AddAiMessage("Stopped. You can ask again or rephrase the question.");
             }
             catch (Exception ex)
             {
+                if (viaAgent) _steps.Failed();
                 AddAiMessage("Error: " + ex.Message);
             }
             finally
@@ -293,26 +485,222 @@ namespace NexusShell.App.ViewModels
             }
         }
 
-        private async Task<string> SendViaAgentAsync(string message, CancellationToken cancellationToken)
+        private async Task<string> SendViaAgentAsync(string message, IReadOnlyList<string> attachments, CancellationToken cancellationToken)
         {
-            StatusText = "NexusAgent is thinking...";
-            _conversation ??= await _agentService!.StartConversationAsync(_initialContext, cancellationToken);
+            // Narrate in the user's AI language (read each time: the setting may have changed).
+            _steps.Language = AgentProgressNarrator.LanguageFrom(_configManager.Load().AI.Language);
+            AgentRunStarted?.Invoke();
+            _steps.Begin();
+            StatusText = AgentProgressNarrator.Sent(_steps.Language);
 
-            // Progress<T> captures the UI SynchronizationContext: updates land on the UI thread.
-            var progress = new Progress<AgentProgress>(p => StatusText = p.Message);
-            var result = await _conversation.SendAsync(message, progress, cancellationToken);
+            // The latest choices always apply, even when they were made a moment ago (still settling).
+            if (_conversation is null) _conversation = await _agentService!.StartConversationAsync(_initialContext, Workspace.BuildOptions(), cancellationToken);
+            else await _conversation.UpdateOptionsAsync(Workspace.BuildOptions(), cancellationToken);
 
-            string answer = result.Text;
+            // Progress<T> captures the UI SynchronizationContext: steps arrive on the UI thread, in order.
+            var progress = new Progress<AgentProgress>(step =>
+            {
+                string? spoken = _steps.Report(step);
+                if (spoken is not null) StatusText = spoken;
+            });
+            var result = await _conversation.SendAsync(message, attachments, progress, cancellationToken);
+
+            var answeredBy = result.Experts.Where(e => e.Succeeded).Select(e => e.ExpertName).Distinct().ToList();
+            if (result.Experts.Count > 0 && answeredBy.Count == 0) _steps.Failed();
+            else _steps.Completed(answeredBy);
+
+            var answer = new StringBuilder(result.Text);
             if (_conversation.Mode == OrchestrationMode.MixtureOfExperts && result.Experts.Count > 0)
             {
+                // Which model answered matters: it may differ from the chosen one after an automatic switch.
                 var credits = result.Experts.Select(e => e.Succeeded
-                    ? $"{e.ExpertName} {e.Weight:P0}"
+                    ? string.IsNullOrWhiteSpace(e.Model) ? $"{e.ExpertName} {e.Weight:P0}" : $"{e.ExpertName} {e.Weight:P0} with {e.Model}"
                     : $"{e.ExpertName} (unavailable)");
-                answer += "\n\n(Answered by: " + string.Join(", ", credits) + ")";
+                answer.Append("\n\n(Answered by: ").Append(string.Join(", ", credits)).Append(')');
+            }
+            if (result.AttachmentNotes.Count > 0)
+                answer.Append("\n\nAttachment notes: ").Append(string.Join(" ", result.AttachmentNotes));
+
+            AddAiMessage(answer.ToString(), AgentLabel);
+            return result.Text;
+        }
+
+        // ---------- @mentions ----------
+
+        [GeneratedRegex(@"(?:^|\s)@(?:""(?<q>[^""]+)""|(?<p>[^\s""]+))")]
+        private static partial Regex MentionPattern();
+
+        /// <summary>"@path" or "@\"path with spaces\"": existing files or folders, relative to the working folder.</summary>
+        private IEnumerable<string> FindMentions(string message)
+        {
+            foreach (Match match in MentionPattern().Matches(message))
+            {
+                string raw = match.Groups["q"].Success ? match.Groups["q"].Value : match.Groups["p"].Value.TrimEnd('.', ',', ';', ':', ')', '?', '!');
+                if (raw.Length == 0) continue;
+                string? full = null;
+                try
+                {
+                    full = Path.IsPathRooted(raw)
+                        ? Path.GetFullPath(raw)
+                        : Workspace.WorkingDirectory is { } folder ? Path.GetFullPath(Path.Combine(folder, raw)) : null;
+                }
+                catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+                {
+                }
+                if (full is not null && (File.Exists(full) || Directory.Exists(full))) yield return full;
+            }
+        }
+
+        // ---------- Slash commands (keyboard-first control, like Claude Code) ----------
+
+        private const string SlashHelp =
+            "Commands (type them in the message box):\n" +
+            "/model  lists the models. /model NAME chooses one (part of the name is enough). /model auto goes back to automatic.\n" +
+            "/expert  lists the experts. /expert NAME makes one expert answer. /expert auto uses the mixture of experts.\n" +
+            "/mode ask, /mode edits or /mode plan  sets permissions: ask before changes, auto-approve file edits, or read-only planning.\n" +
+            "/folder PATH  sets the working folder. /folder clear removes it. /folder alone says the current folder.\n" +
+            "/attach PATH  attaches a file or folder to the next message. You can also write @PATH inside a message.\n" +
+            "/tools  says which tools, skills and MCP servers are on.\n" +
+            "/status  says the agent status and current choices.\n" +
+            "/reload  reloads providers, models and MCP servers.\n" +
+            "/clear  clears the conversation.";
+
+        private static readonly HashSet<string> SlashCommands = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "help", "?", "model", "models", "expert", "experts", "mode", "permissions", "folder", "cd", "attach", "tools", "status", "reload", "clear",
+        };
+
+        private async Task<bool> TryRunSlashCommandAsync(string message)
+        {
+            if (!message.StartsWith('/')) return false;
+            int space = message.IndexOf(' ');
+            string name = (space < 0 ? message[1..] : message[1..space]).Trim();
+            string argument = space < 0 ? string.Empty : message[(space + 1)..].Trim();
+            if (!SlashCommands.Contains(name)) return false; // e.g. "/usr/bin ..." is a normal question
+
+            AddUserMessage(message);
+            _runningCommand = true;
+            _commandEcho = null;
+            string reply;
+            try
+            {
+                reply = name.ToLowerInvariant() switch
+            {
+                "help" or "?" => SlashHelp,
+                "model" or "models" => ModelCommand(argument),
+                "expert" or "experts" => ExpertCommand(argument),
+                "mode" or "permissions" => ModeCommand(argument),
+                "folder" or "cd" => FolderCommand(argument),
+                "attach" => AttachCommand(argument),
+                "tools" => $"{Workspace.CapabilitiesSummary}. Use the Tools, skills and MCP button to change them.",
+                "status" => StatusSummary(),
+                "reload" => await ReloadCommandAsync(),
+                "clear" => ClearCommand(),
+                _ => SlashHelp,
+                };
+                if (string.IsNullOrEmpty(reply)) reply = _commandEcho ?? string.Empty;
+            }
+            finally
+            {
+                _runningCommand = false;
             }
 
-            AddAiMessage(answer, AgentLabel);
-            return result.Text;
+            if (!string.IsNullOrEmpty(reply))
+            {
+                AddAiMessage(reply, ShellLabel);
+                Speak(reply.Length > 400 ? reply[..400] + " ... The full list is in the conversation." : reply);
+            }
+            return true;
+        }
+
+        private string ModelCommand(string argument)
+        {
+            if (argument.Length == 0)
+            {
+                var available = Workspace.Models.Where(m => m.Value is not null && m.IsAvailable).Select(m => m.Value!).ToList();
+                var unavailable = Workspace.Models.Count(m => m.Value is not null && !m.IsAvailable);
+                return $"Current model: {Workspace.SelectedModel.Text}.\n" +
+                       (available.Count == 0 ? "No model is available right now." : "Available: " + string.Join(", ", available) + ".") +
+                       (unavailable > 0 ? $"\n{unavailable} more are listed in the Model box as unavailable." : string.Empty);
+            }
+            var choice = Workspace.FindModel(argument);
+            if (choice is null) return $"No model matches \"{argument}\". Type /model to list them.";
+            Workspace.SelectedModel = choice; // announces and applies
+            return string.Empty;
+        }
+
+        private string ExpertCommand(string argument)
+        {
+            if (argument.Length == 0)
+                return $"Current: {Workspace.SelectedExpert.Text}.\nExperts: " + string.Join(", ", Workspace.Experts.Where(e => e.Value is not null).Select(e => $"{e.Text} ({e.Value})")) + ".";
+            var choice = Workspace.FindExpert(argument);
+            if (choice is null) return $"No expert matches \"{argument}\". Type /expert to list them.";
+            Workspace.SelectedExpert = choice;
+            return string.Empty;
+        }
+
+        private string ModeCommand(string argument)
+        {
+            if (argument.Length == 0) return "Permissions: " + Workspace.SelectedPermission.Description + " Options: /mode ask, /mode edits, /mode plan.";
+            var choice = Workspace.FindPermission(argument);
+            if (choice is null) return "Use /mode ask, /mode edits or /mode plan.";
+            Workspace.SelectedPermission = choice;
+            return string.Empty;
+        }
+
+        private string FolderCommand(string argument)
+        {
+            if (argument.Length == 0) return Workspace.HasWorkingDirectory ? $"Working folder: {Workspace.WorkingDirectory}" : "No working folder. Use /folder PATH or the Working folder button.";
+            if (argument.Equals("clear", StringComparison.OrdinalIgnoreCase) || argument.Equals("none", StringComparison.OrdinalIgnoreCase))
+            {
+                Workspace.SetWorkingDirectory(null);
+                return string.Empty;
+            }
+            string path = Environment.ExpandEnvironmentVariables(argument.Trim('"'));
+            if (!Path.IsPathRooted(path) && Workspace.WorkingDirectory is { } current) path = Path.Combine(current, path);
+            if (!Directory.Exists(path)) return $"Folder not found: {path}";
+            Workspace.SetWorkingDirectory(path);
+            return string.Empty;
+        }
+
+        private string AttachCommand(string argument)
+        {
+            if (argument.Length == 0) return "Write /attach followed by a file or folder path, or use the Attach files button.";
+            string path = Environment.ExpandEnvironmentVariables(argument.Trim('"'));
+            if (!Path.IsPathRooted(path) && Workspace.WorkingDirectory is { } folder) path = Path.Combine(folder, path);
+            return Workspace.AddAttachments([path]) > 0
+                ? $"Attached {Path.GetFileName(path.TrimEnd('\\'))}. {Workspace.AttachmentsSummary}."
+                : $"Could not attach {path}: it does not exist, is already attached, or the limit of {AgentWorkspaceViewModel.MaxAttachments} was reached.";
+        }
+
+        private string StatusSummary()
+        {
+            var options = Workspace.BuildOptions();
+            return $"{AgentStatus}\n" +
+                   $"Agent mode: {(UseAgent ? "on" : "off")}. Model: {Workspace.SelectedModel.Text}. Experts: {Workspace.SelectedExpert.Text}. " +
+                   $"Permissions: {Workspace.SelectedPermission.Text}. Working folder: {options.WorkingDirectory ?? "none"}. " +
+                   $"{Workspace.CapabilitiesSummary}. {Workspace.AttachmentsSummary}.";
+        }
+
+        private async Task<string> ReloadCommandAsync()
+        {
+            await ReloadAgentAsync();
+            return "Reloaded. " + AgentStatus;
+        }
+
+        private string ClearCommand()
+        {
+            ClearChat();
+            return string.Empty;
+        }
+
+        /// <summary>Stops pending announcements and timers (called when the window closes).</summary>
+        public void Shutdown()
+        {
+            _sendCts?.Cancel();
+            _workspaceDebounce?.Cancel();
+            Workspace.OptionsChanged -= OnWorkspaceChanged;
+            _steps.Dispose();
         }
 
         private void ClearChat()
@@ -325,6 +713,7 @@ namespace NexusShell.App.ViewModels
             var settings = _configManager.Load();
             string msg = settings.AI.Language == "Arabic" ? "تم مسح المحادثة. كيف يمكنني مساعدتك؟" : "Chat cleared. How can I help you?";
             AddAiMessage(msg);
+            Speak(msg);
         }
     }
 }

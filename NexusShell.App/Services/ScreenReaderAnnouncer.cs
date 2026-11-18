@@ -7,6 +7,13 @@ namespace NexusShell.App.Services
     public interface IScreenReaderAnnouncer
     {
         void Announce(string text);
+
+        /// <summary>
+        /// Speaks through the NVDA controller or the JAWS API only. Returns false when
+        /// neither is available, so the caller can raise a UI Automation notification
+        /// from its own (foreground) window instead.
+        /// </summary>
+        bool TryAnnounceDirect(string text);
     }
 
     public sealed class ScreenReaderAnnouncer : IScreenReaderAnnouncer
@@ -94,15 +101,27 @@ namespace NexusShell.App.Services
         {
             if (string.IsNullOrWhiteSpace(text)) return;
 
-            // 1. Try direct NVDA Controller API (0ms, crystal-clear, no duplicate UIA events)
+            // 1-2. Direct NVDA Controller API / JAWS COM API (no duplicate UIA events)
+            if (TryAnnounceDirect(text)) return;
+
+            // 3. Fallback to UIA Live Region ONLY if direct screen reader controller is unavailable
+            AnnouncementRequested?.Invoke(text);
+            _logger.LogDebug("ScreenReader Announcement: {Text}", text);
+        }
+
+        public bool TryAnnounceDirect(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return false;
+
+            // 1. Direct NVDA Controller API (0ms, crystal-clear). Queues after current speech.
             try
             {
                 int status = _is64Bit ? NvdaSpeak64(text) : NvdaSpeak32(text);
-                if (status == 0) return;
+                if (status == 0) return true;
             }
             catch { }
 
-            // 2. Try JAWS COM API
+            // 2. JAWS COM API (flush = false: queue, do not interrupt).
             try
             {
                 var jawsType = Type.GetTypeFromProgID("FreedomSci.JawsApi");
@@ -112,15 +131,13 @@ namespace NexusShell.App.Services
                     if (jaws != null)
                     {
                         var res = jaws.SayString(text, false);
-                        if (res is bool b && b) return;
+                        if (res is bool b && b) return true;
                     }
                 }
             }
             catch { }
 
-            // 3. Fallback to UIA Live Region ONLY if direct screen reader controller is unavailable
-            AnnouncementRequested?.Invoke(text);
-            _logger.LogDebug("ScreenReader Announcement: {Text}", text);
+            return false;
         }
     }
 }

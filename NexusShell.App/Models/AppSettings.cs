@@ -16,6 +16,29 @@ namespace NexusShell.App.Models
         public string ApiKey { get; set; } = "";
         public string Model { get; set; } = "auto";
         public string Language { get; set; } = "English";
+
+        /// <summary>Speak each NexusAgent step (experts, tools, approvals) through the screen reader while waiting.</summary>
+        public bool AnnounceAgentSteps { get; set; } = true;
+
+        // NexusAgent window choices (restored when the chat opens). No secrets here:
+        // model references, expert ids, a folder path and capability names only.
+
+        /// <summary>"provider/model" or "auto" (best available model, automatic failover).</summary>
+        public string AgentModel { get; set; } = "auto";
+
+        /// <summary>Expert id or "auto" (mixture of experts).</summary>
+        public string AgentExpert { get; set; } = "auto";
+
+        /// <summary>Ask, AutoApproveEdits or ReadOnly.</summary>
+        public string AgentPermission { get; set; } = "Ask";
+
+        public string AgentWorkingDirectory { get; set; } = "";
+
+        public List<string> AgentDisabledTools { get; set; } = new();
+
+        public List<string> AgentDisabledSkills { get; set; } = new();
+
+        public List<string> AgentDisabledMcpServers { get; set; } = new();
     }
 
     public class AliasConfig

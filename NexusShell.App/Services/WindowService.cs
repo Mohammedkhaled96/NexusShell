@@ -292,10 +292,22 @@ namespace NexusShell.App.Services
             var aiService = _serviceProvider.GetRequiredService<IAIService>();
             var configManager = _serviceProvider.GetRequiredService<IConfigManager>();
             var agentService = _serviceProvider.GetService<NexusShell.Agents.Application.Conversations.INexusAgentService>();
-            var viewModel = new AIChatViewModel(aiService, configManager, initialContext, contextLabel, agentService, ShowAgentKeysWindow);
-            var window    = new AIChatWindow(viewModel);
+            var loggerFactory = _serviceProvider.GetService<Microsoft.Extensions.Logging.ILoggerFactory>();
+            var viewModel = new AIChatViewModel(aiService, configManager, initialContext, contextLabel, agentService, ShowAgentKeysWindow, loggerFactory,
+                agentService is null ? null : ShowAgentProvidersWindow);
+            var window    = new AIChatWindow(viewModel, _serviceProvider.GetService<IScreenReaderAnnouncer>());
             VisualEffects.FadeInWindow(window);
             window.Show();
+        }
+
+        public void ShowAgentProvidersWindow()
+        {
+            PlaySound(AppSound.OpenManager);
+            var viewModel = _serviceProvider.GetRequiredService<AgentProvidersViewModel>();
+            var window = new AgentProvidersWindow(viewModel);
+            var owner = Application.Current?.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive);
+            if (owner != null && owner != window) window.Owner = owner;
+            window.ShowDialog();
         }
 
         public void ShowAgentKeysWindow()

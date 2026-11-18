@@ -4,25 +4,66 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:viewModels="clr-namespace:NexusShell.App.ViewModels"
+        xmlns:helpers="clr-namespace:NexusShell.App.Helpers"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=viewModels:AIChatViewModel, IsDesignTimeCreatable=False}"
-        Title="{Binding WindowTitle}" Height="750" Width="950"
+        Title="{Binding WindowTitle}" Height="820" Width="1040"
         Background="#121212" Foreground="#E0E0E0"
         WindowStartupLocation="CenterScreen"
         WindowStyle="ThreeDBorderWindow"
         ResizeMode="CanResize"
-        MinWidth="500" MinHeight="400"
+        MinWidth="560" MinHeight="460"
+        AllowDrop="True"
+        DragOver="Window_DragOver"
+        Drop="Window_Drop"
+        PreviewKeyDown="Window_PreviewKeyDown"
         AutomationProperties.Name="{Binding WindowTitle}"
         FocusManager.FocusedElement="{Binding ElementName=MessageInput}">
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <Style x:Key="WorkspaceLabel" TargetType="Label">
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="0,0,6,0"/>
+        </Style>
+
+        <Style x:Key="WorkspaceButton" TargetType="Button">
+            <Setter Property="Background" Value="#2D2D30"/>
+            <Setter Property="Foreground" Value="#E0E0E0"/>
+            <Setter Property="BorderBrush" Value="#555"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,4"/>
+            <Setter Property="Margin" Value="0,0,8,6"/>
+            <Setter Property="MinHeight" Value="30"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+
+        <!-- Items speak a short name, then their explanation (availability, reason). Tooltips only on
+             mouse hover: on keyboard focus they would make screen readers read each item twice. -->
+        <Style x:Key="ChoiceItemStyle" TargetType="ComboBoxItem">
+            <Setter Property="AutomationProperties.Name" Value="{Binding AutomationName}"/>
+            <Setter Property="AutomationProperties.HelpText" Value="{Binding HelpText}"/>
+            <Setter Property="ToolTip" Value="{Binding Description}"/>
+            <Setter Property="ToolTipService.ShowsToolTipOnKeyboardFocus" Value="False"/>
+        </Style>
+
+        <!-- Enter, Space or the arrow keys open the list first; Enter chooses, Escape keeps the old choice. -->
+        <Style x:Key="WorkspaceCombo" TargetType="ComboBox">
+            <Setter Property="helpers:ComboBoxKeyboard.BrowseBeforeChoosing" Value="True"/>
+            <Setter Property="ToolTipService.ShowsToolTipOnKeyboardFocus" Value="False"/>
+            <Setter Property="MinHeight" Value="28"/>
+            <Setter Property="MaxDropDownHeight" Value="420"/>
+        </Style>
     </Window.Resources>
 
     <Grid Margin="20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/> <!-- NexusAgent mode bar -->
+            <RowDefinition Height="Auto"/> <!-- Agent workspace: model, expert, permissions, folder, attachments -->
             <RowDefinition Height="*"/>    <!-- Chat History / Web View -->
             <RowDefinition Height="Auto"/> <!-- Thinking Status -->
             <RowDefinition Height="Auto"/> <!-- Input Area -->
@@ -30,8 +71,9 @@
         </Grid.RowDefinitions>
 
         <!-- NexusAgent (Microsoft Agent Framework, mixture of experts) -->
-        <Grid Grid.Row="0" Margin="0,0,0,10">
+        <Grid Grid.Row="0" Margin="0,0,0,8">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
@@ -43,32 +85,150 @@
                       Foreground="#E0E0E0" FontSize="13" VerticalAlignment="Center" Margin="0,0,16,0"
                       AutomationProperties.Name="Agent mode: answer with NexusAgent experts, tools and MCP servers"
                       AutomationProperties.HelpText="When unchecked, the classic NexusAI chat answers." />
-            <TextBlock Grid.Column="1"
+            <CheckBox x:Name="SpeakStepsCheckBox"
+                      Grid.Column="1"
+                      Content="_Speak agent steps"
+                      IsChecked="{Binding SpeakAgentSteps}"
+                      Foreground="#E0E0E0" FontSize="13" VerticalAlignment="Center" Margin="0,0,16,0"
+                      AutomationProperties.Name="Speak agent steps"
+                      AutomationProperties.HelpText="While you wait for a reply, the screen reader says what the agent is doing: choosing experts, running tools, waiting for approval, switching models." />
+            <TextBlock Grid.Column="2"
                        Text="{Binding AgentStatus}"
                        Foreground="#9E9E9E" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
                        AutomationProperties.LiveSetting="Polite"
                        AutomationProperties.Name="{Binding AgentStatus}" />
         </Grid>
 
+        <!-- Agent workspace -->
+        <Border Grid.Row="1" Background="#1A1A1A" BorderBrush="#333" BorderThickness="1" CornerRadius="4" Padding="10,8,10,2" Margin="0,0,0,10"
+                IsEnabled="{Binding UseAgent}"
+                AutomationProperties.Name="Agent workspace">
+            <StackPanel>
+                <WrapPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,14,6">
+                        <Label Content="_Model:" Target="{Binding ElementName=ModelCombo}" Style="{StaticResource WorkspaceLabel}"/>
+                        <ComboBox x:Name="ModelCombo" Width="360" Style="{StaticResource WorkspaceCombo}"
+                                  ItemsSource="{Binding Workspace.Models}"
+                                  SelectedItem="{Binding Workspace.SelectedModel}"
+                                  DisplayMemberPath="Text"
+                                  ItemContainerStyle="{StaticResource ChoiceItemStyle}"
+                                  ToolTip="{Binding Workspace.SelectedModel.Description}"
+                                  AutomationProperties.Name="Model"
+                                  AutomationProperties.HelpText="Press Enter or Down arrow to open the list, arrows to read the models, Enter to choose, Escape to keep the current one. If the chosen model stops, another model continues the task automatically." />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,14,6">
+                        <Label Content="E_xpert:" Target="{Binding ElementName=ExpertCombo}" Style="{StaticResource WorkspaceLabel}"/>
+                        <ComboBox x:Name="ExpertCombo" Width="230" Style="{StaticResource WorkspaceCombo}"
+                                  ItemsSource="{Binding Workspace.Experts}"
+                                  SelectedItem="{Binding Workspace.SelectedExpert}"
+                                  DisplayMemberPath="Text"
+                                  ItemContainerStyle="{StaticResource ChoiceItemStyle}"
+                                  ToolTip="{Binding Workspace.SelectedExpert.Description}"
+                                  AutomationProperties.Name="Expert"
+                                  AutomationProperties.HelpText="Press Enter or Down arrow to open the list. Automatic uses the mixture of experts; a chosen expert answers every message and asks the others for help when needed." />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <Label Content="_Permissions:" Target="{Binding ElementName=PermissionCombo}" Style="{StaticResource WorkspaceLabel}"/>
+                        <ComboBox x:Name="PermissionCombo" Width="230" Style="{StaticResource WorkspaceCombo}"
+                                  ItemsSource="{Binding Workspace.Permissions}"
+                                  SelectedItem="{Binding Workspace.SelectedPermission}"
+                                  DisplayMemberPath="Text"
+                                  ItemContainerStyle="{StaticResource ChoiceItemStyle}"
+                                  ToolTip="{Binding Workspace.SelectedPermission.Description}"
+                                  AutomationProperties.Name="Permissions"
+                                  AutomationProperties.HelpText="Press Enter or Down arrow to open the list: ask before changes, auto-approve file edits, or read-only plan mode." />
+                    </StackPanel>
+                </WrapPanel>
+
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Grid.Column="0" Content="Working _folder..." Click="ChooseFolder_Click" Style="{StaticResource WorkspaceButton}" Margin="0,0,8,0"
+                            AutomationProperties.Name="Choose working folder"
+                            AutomationProperties.HelpText="The folder the agent works in: relative paths, file tools and commands use it." />
+                    <TextBox x:Name="WorkingFolderBox" Grid.Column="1"
+                             Text="{Binding Workspace.WorkingDirectoryText, Mode=OneWay}"
+                             IsReadOnly="True" Background="#121212" Foreground="#CCCCCC" BorderBrush="#444" Padding="6,4" VerticalContentAlignment="Center"
+                             AutomationProperties.Name="Working folder" />
+                    <Button Grid.Column="2" Content="Clear folder" Command="{Binding ClearWorkingFolderCommand}" Style="{StaticResource WorkspaceButton}" Margin="8,0,0,0"
+                            Visibility="{Binding Workspace.HasWorkingDirectory, Converter={StaticResource BoolToVis}}"
+                            AutomationProperties.Name="Clear working folder" />
+                </Grid>
+
+                <WrapPanel>
+                    <Button Content="Attach f_iles..." Click="AttachFiles_Click" Style="{StaticResource WorkspaceButton}"
+                            AutomationProperties.Name="Attach files"
+                            AutomationProperties.HelpText="Choose files to send with your next message (Ctrl+O). You can also drop files on the window or write @path in the message." />
+                    <Button Content="Attach fol_der..." Click="AttachFolder_Click" Style="{StaticResource WorkspaceButton}"
+                            AutomationProperties.Name="Attach folder"
+                            AutomationProperties.HelpText="Send a folder (its file list and main text files) with your next message (Ctrl+Shift+O)." />
+                    <Button Content="Too_ls, skills and MCP..." Click="Capabilities_Click" Style="{StaticResource WorkspaceButton}"
+                            ToolTip="{Binding Workspace.CapabilitiesSummary}"
+                            AutomationProperties.Name="Tools, skills and MCP servers"
+                            AutomationProperties.HelpText="{Binding Workspace.CapabilitiesSummary}" />
+                    <Button Content="P_roviders and models..." Command="{Binding ManageProvidersCommand}" Style="{StaticResource WorkspaceButton}"
+                            AutomationProperties.Name="Providers and models"
+                            AutomationProperties.HelpText="Add online providers or local model servers, find their models and set their keys." />
+                    <Button Content="Refres_h" Command="{Binding RefreshAgentCommand}" Style="{StaticResource WorkspaceButton}"
+                            AutomationProperties.Name="Refresh models and status"
+                            AutomationProperties.HelpText="Checks again which providers and local models are available." />
+                </WrapPanel>
+
+                <Grid Visibility="{Binding Workspace.HasAttachments, Converter={StaticResource BoolToVis}}" Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <ListBox x:Name="AttachmentsList" Grid.Column="0"
+                             ItemsSource="{Binding Workspace.Attachments}"
+                             DisplayMemberPath="Text"
+                             MaxHeight="90"
+                             Background="#121212" Foreground="#E0E0E0" BorderBrush="#444"
+                             KeyDown="AttachmentsList_KeyDown"
+                             AutomationProperties.Name="{Binding Workspace.AttachmentsSummary}"
+                             AutomationProperties.HelpText="Files and folders sent with your next message. Press Delete to remove the selected one.">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel/>
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="AutomationProperties.Name" Value="{Binding AutomationName}"/>
+                                <Setter Property="ToolTip" Value="{Binding Path}"/>
+                                <Setter Property="Padding" Value="8,3"/>
+                                <Setter Property="Margin" Value="0,0,6,0"/>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                    </ListBox>
+                    <Button Grid.Column="1" Content="Remove attachments" Command="{Binding ClearAttachmentsCommand}" Style="{StaticResource WorkspaceButton}" Margin="8,0,0,0" VerticalAlignment="Top"
+                            AutomationProperties.Name="Remove all attachments" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
         <!-- Chat Experience Area -->
-        <Border Grid.Row="1" Background="#121212" BorderBrush="#333" BorderThickness="1">
+        <Border Grid.Row="2" Background="#121212" BorderBrush="#333" BorderThickness="1">
             <wv2:WebView2 x:Name="ChatWebView" AutomationProperties.Name="Chat Conversation History" />
         </Border>
 
         <!-- Thinking Indicator -->
         <TextBlock x:Name="ThinkingIndicator"
-                   Grid.Row="2"
+                   Grid.Row="3"
                    Text="{Binding StatusText}"
-                   Foreground="#007ACC"
+                   Foreground="#4FC3F7"
                    FontSize="13"
                    FontWeight="Bold"
                    Margin="5,12,0,12"
                    Visibility="{Binding IsSending, Converter={StaticResource BoolToVis}}"
-                   AutomationProperties.LiveSetting="Polite"
-                   AutomationProperties.Name="Status Indicator" />
+                   AutomationProperties.Name="{Binding StatusText}"
+                   AutomationProperties.HelpText="What NexusAgent is doing now. Steps are also spoken automatically." />
 
         <!-- User Input Area -->
-        <Border Grid.Row="3" Background="#1E1E1E" BorderBrush="#444" BorderThickness="1" CornerRadius="4" Padding="5">
+        <Border Grid.Row="4" Background="#1E1E1E" BorderBrush="#444" BorderThickness="1" CornerRadius="4" Padding="5">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -88,7 +248,7 @@
                          VerticalScrollBarVisibility="Auto"
                          PreviewKeyDown="MessageInput_PreviewKeyDown"
                          AutomationProperties.Name="Chat Message Input"
-                         AutomationProperties.HelpText="Type your question for NexusAI. Press Enter to send, or Shift+Enter for a new line." />
+                         AutomationProperties.HelpText="Type your question. Enter sends, Shift+Enter adds a line. Write @path to attach a file, or a command such as /help, /model, /mode plan or /folder." />
 
                 <Button x:Name="SendButton"
                         Grid.Column="1"
@@ -107,7 +267,7 @@
         </Border>
 
         <!-- Utility Footer -->
-        <Grid Grid.Row="4" Margin="0,15,0,0">
+        <Grid Grid.Row="5" Margin="0,15,0,0">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="S_top"
                         Command="{Binding StopCommand}"
@@ -117,15 +277,15 @@
                         AutomationProperties.HelpText="Cancels the current request." />
                 <Button Content="Agent _Keys"
                         Command="{Binding ManageAgentKeysCommand}"
-                        Background="Transparent" Foreground="#999" BorderThickness="0" Margin="0,0,25,0" Cursor="Hand"
+                        Background="Transparent" Foreground="#BBBBBB" BorderThickness="0" Margin="0,0,25,0" Cursor="Hand"
                         AutomationProperties.Name="Manage NexusAgent API keys and tokens" />
                 <Button Content="Clear Chat"
                         Command="{Binding ClearChatCommand}"
-                        Background="Transparent" Foreground="#999" BorderThickness="0" Margin="0,0,25,0" Cursor="Hand"
+                        Background="Transparent" Foreground="#BBBBBB" BorderThickness="0" Margin="0,0,25,0" Cursor="Hand"
                         AutomationProperties.Name="Clear conversation history" />
                 <Button Content="Close Chat"
                         Click="CloseButton_Click"
-                        Background="Transparent" Foreground="#999" BorderThickness="0" Cursor="Hand"
+                        Background="Transparent" Foreground="#BBBBBB" BorderThickness="0" Cursor="Hand"
                         AutomationProperties.Name="Close chat window" />
             </StackPanel>
         </Grid>
