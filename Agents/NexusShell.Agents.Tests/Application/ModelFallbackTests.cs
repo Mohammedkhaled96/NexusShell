@@ -55,7 +55,7 @@ public sealed class ModelFallbackTests : IDisposable
     [Theory]
     [InlineData(HttpStatusCode.Unauthorized, ModelFailureKind.Unauthorized, "FAKE_API_KEY")]
     [InlineData(HttpStatusCode.TooManyRequests, ModelFailureKind.RateLimited, "quota")]
-    [InlineData(HttpStatusCode.BadGateway, ModelFailureKind.Unavailable, "unreachable")]
+    [InlineData(HttpStatusCode.BadGateway, ModelFailureKind.Unavailable, "overloaded or failing")]
     public async Task Other_http_failures_are_classified(HttpStatusCode status, ModelFailureKind kind, string hint)
     {
         var client = new ProviderErrorChatClient(new ThrowingChatClient(new HttpRequestException("x", null, status)), Provider, "m");
@@ -186,6 +186,72 @@ public sealed class ModelFallbackTests : IDisposable
         Assert.Equal("answer from good-model", reply.Text);
         Assert.Equal(new[] { "retired-model", "good-model" }, models.ToArray());
         Assert.True(DateTime.UtcNow - started < TimeSpan.FromSeconds(10));
+    }
+
+    /// <summary>The exact shape seen live with api.openai.com behind a blocking network.</summary>
+    private static Exception BlockedTls() => new AggregateException(
+        "Retry failed after 2 tries.",
+        new HttpRequestException("The SSL connection could not be established, see inner exception.",
+            new System.Security.Authentication.AuthenticationException("Authentication failed because the remote party sent a TLS alert: 'HandshakeFailure'.")),
+        new HttpRequestException("The SSL connection could not be established, see inner exception."));
+
+    [Fact]
+    public async Task Blocked_connection_is_unreachable_provider_wide_and_clearly_explained()
+    {
+        var client = new ProviderErrorChatClient(new ThrowingChatClient(BlockedTls()), Provider, "any-model");
+
+        var error = await Assert.ThrowsAsync<ModelProviderException>(() => client.GetResponseAsync("hi"));
+
+        Assert.Equal(ModelFailureKind.Unreachable, error.Kind);
+        Assert.True(error.IsProviderWide);
+        Assert.True(error.CanFallBack);
+        Assert.Contains("cannot be reached from this computer", error.Message, StringComparison.Ordinal);
+        Assert.Contains("HandshakeFailure", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("AggregateException", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Unreachable_provider_is_skipped_and_another_provider_answers()
+    {
+        const string twoProviders =
+            """
+            {
+              "orchestration": { "router": { "strategy": "keyword" }, "defaultExpert": "alpha" },
+              "models": { "preference": ["blocked", "backup"] },
+              "providers": {
+                "blocked": { "kind": "openai-compatible", "endpoint": "https://blocked.invalid/v1", "defaultModel": "m1", "fallbackModels": ["m2", "m3"] },
+                "backup":  { "kind": "openai-compatible", "endpoint": "https://backup.invalid/v1", "defaultModel": "good" }
+              }
+            }
+            """;
+        _host.WriteBundled("agent.json", twoProviders)
+             .WriteBundled(Path.Combine("experts", "alpha.md"), "---\nname: Alpha\ndescription: Alpha handles apples questions.\nkeywords: [apples]\n---\nAnswer.");
+        var calls = new List<string>();
+        await using var services = _host.Build(s => s.AddSingleton<IChatClientFactory>(new BlockedProviderFactory(calls)));
+
+        var conversation = await services.GetRequiredService<INexusAgentService>().StartConversationAsync();
+        var reply = await conversation.SendAsync("apples?");
+
+        Assert.Equal("answer from backup", reply.Text);
+        // One failed attempt on the blocked provider, then straight to the backup: m2/m3 are never tried.
+        Assert.Equal(new[] { "blocked/m1", "backup/good" }, calls.ToArray());
+
+        var health = await services.GetRequiredService<INexusAgentService>().GetHealthAsync();
+        var blocked = health.Providers.Single(p => p.ProviderId == "blocked");
+        Assert.False(blocked.IsAvailable);
+        Assert.StartsWith("Temporarily skipped", blocked.Detail, StringComparison.Ordinal);
+    }
+
+    private sealed class BlockedProviderFactory(List<string> calls) : IChatClientFactory
+    {
+        public IChatClient CreateChatClient(ProviderProfile provider, string modelId)
+        {
+            lock (calls) calls.Add(provider.Id + "/" + modelId);
+            IChatClient inner = provider.Id == "backup"
+                ? new ScriptedChatClient((_, _) => ScriptedChatClient.Text("answer from backup"))
+                : new ThrowingChatClient(BlockedTls());
+            return new ProviderErrorChatClient(inner, provider, modelId);
+        }
     }
 
     [Fact]
