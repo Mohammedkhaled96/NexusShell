@@ -33,6 +33,16 @@ public sealed record ProviderProfile
     /// </summary>
     public IReadOnlyList<string> FallbackModels { get; init; } = [];
 
+    /// <summary>Other models the user added for this provider (offered in the model picker).</summary>
+    public IReadOnlyList<string> Models { get; init; } = [];
+
+    /// <summary>Every model known for this provider: default, fallbacks, fast and user-added (no duplicates).</summary>
+    public IEnumerable<string> KnownModels =>
+        CandidateModels.Concat(new[] { FastModel }).Concat(Models)
+            .Where(m => !string.IsNullOrWhiteSpace(m))
+            .Select(m => m!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// Small, quick model for latency-sensitive internal calls (expert routing).
     /// Resolved through the "fast" model keyword; falls back to the normal candidates.

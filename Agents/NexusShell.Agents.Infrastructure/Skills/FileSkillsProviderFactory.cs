@@ -1,6 +1,7 @@
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.Logging;
 using NexusShell.Agents.Application.Abstractions.Skills;
+using NexusShell.Agents.Application.Conversations;
 using NexusShell.Agents.Domain.Configuration;
 using NexusShell.Agents.Domain.Experts;
 using NexusShell.Agents.Infrastructure.Configuration;
@@ -33,6 +34,8 @@ internal sealed class FileSkillsProviderFactory(
 
         bool all = expert.Skills.Any(s => s.Trim() == "*");
         var allowed = new HashSet<string>(expert.Skills.Select(s => s.Trim()), StringComparer.OrdinalIgnoreCase);
+        var disabled = configuration.DisabledSkills;
+        if (!all && allowed.All(disabled.Contains)) return null;
 
         bool scripts = configuration.Skills.EnableScripts;
         var fileOptions = new AgentFileSkillsSourceOptions { SearchDepth = 2 };
@@ -41,7 +44,7 @@ internal sealed class FileSkillsProviderFactory(
         // The framework requires a runner for file skills; when scripts are disabled the runner refuses.
         var builder = new AgentSkillsProviderBuilder()
             .UseFileSkills(directories, fileOptions, scripts ? scriptRunner.RunAsync : SkillScriptRunner.DisabledAsync)
-            .UseFilter((skill, _) => all || allowed.Contains(skill.Frontmatter.Name))
+            .UseFilter((skill, _) => (all || allowed.Contains(skill.Frontmatter.Name)) && !disabled.Contains(skill.Frontmatter.Name))
             .UseOptions(options =>
             {
                 // Reading instructions/resources is harmless; running scripts always asks the user.
@@ -52,5 +55,39 @@ internal sealed class FileSkillsProviderFactory(
             .UseLoggerFactory(loggerFactory);
 
         return builder.Build();
+    }
+
+    public IReadOnlyList<SkillOption> ListSkills()
+    {
+        // User skills override bundled skills with the same name.
+        var skills = new Dictionary<string, SkillOption>(StringComparer.OrdinalIgnoreCase);
+        foreach (string directory in SkillDirectories)
+        {
+            IEnumerable<string> files;
+            try
+            {
+                files = Directory.EnumerateFiles(directory, "SKILL.md", new EnumerationOptions { RecurseSubdirectories = true, MaxRecursionDepth = 2, IgnoreInaccessible = true, MatchCasing = MatchCasing.CaseInsensitive }).ToList();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (string file in files)
+            {
+                try
+                {
+                    var document = FrontmatterDocument.Parse(File.ReadAllText(file));
+                    string name = document.GetString("name") ?? Path.GetFileName(Path.GetDirectoryName(file)) ?? string.Empty;
+                    if (string.IsNullOrWhiteSpace(name)) continue;
+                    skills[name.Trim()] = new SkillOption(name.Trim(), document.GetString("description")?.Trim() ?? string.Empty);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException)
+                {
+                    // An unreadable skill is reported by the framework when an expert loads it.
+                }
+            }
+        }
+        return skills.Values.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 }

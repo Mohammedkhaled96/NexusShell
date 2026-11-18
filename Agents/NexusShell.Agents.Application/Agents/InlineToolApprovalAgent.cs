@@ -25,7 +25,8 @@ internal sealed class InlineToolApprovalAgent(
     ISecretRedactor redactor,
     IReadOnlyDictionary<string, ToolRisk> toolRisks,
     int maxApprovalRounds,
-    ILogger logger) : DelegatingAIAgent(innerAgent)
+    ILogger logger,
+    string? displayName = null) : DelegatingAIAgent(innerAgent)
 {
     private const int MaxArgumentPreviewChars = 600;
 
@@ -105,8 +106,8 @@ internal sealed class InlineToolApprovalAgent(
             return true;
         }
 
-        string agentName = Name ?? Id;
-        AgentRunScope.Report(AgentProgressKind.ApprovalRequested, $"{agentName} wants to run {toolName}", agentName);
+        string agentName = displayName ?? Name ?? Id;
+        AgentRunScope.Report(new AgentProgress(AgentProgressKind.ApprovalRequested, $"{agentName} wants to run {toolName}", agentName) { ToolName = toolName });
 
         toolRisks.TryGetValue(toolName, out var risk);
         var approval = new ToolApprovalRequest(

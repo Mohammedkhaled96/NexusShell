@@ -1,4 +1,6 @@
 using System.ClientModel;
+using System.Globalization;
+using System.Text.RegularExpressions;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -15,14 +17,20 @@ namespace NexusShell.Agents.Infrastructure.Providers;
 /// This lets the Application layer fall back to another model when a model
 /// id is retired, without knowing any provider SDK.
 /// </summary>
-internal sealed class ProviderErrorChatClient(IChatClient inner, ProviderProfile provider, string modelId) : DelegatingChatClient(inner)
+internal sealed partial class ProviderErrorChatClient(IChatClient inner, ProviderProfile provider, string modelId) : DelegatingChatClient(inner)
 {
     private const int MaxDetailChars = 300;
+    private const int MaxSpokenDetailChars = 160;
 
     private TimeSpan _timeout => provider.EffectiveRequestTimeout;
 
+    /// <summary>Set once the model said it cannot call tools; later calls are sent without tools.</summary>
+    private volatile bool _toolsUnsupported;
+
     public override async Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
     {
+        if (_toolsUnsupported) options = WithoutTools(options);
+
         // Bound every model call: an overloaded provider can hang for minutes before answering 503.
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(_timeout);
@@ -34,10 +42,38 @@ internal sealed class ProviderErrorChatClient(IChatClient inner, ProviderProfile
         {
             throw TimedOut(ex);
         }
+        catch (Exception ex) when (options?.Tools is { Count: > 0 } && IsToolsUnsupported(ex))
+        {
+            // Small local models (e.g. gemma, phi) refuse requests that carry tools: answer without them.
+            _toolsUnsupported = true;
+        }
         catch (Exception ex) when (Translate(ex) is { } translated)
         {
             throw translated;
         }
+
+        return await GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal static bool IsToolsUnsupported(Exception exception)
+    {
+        string detail = DetailOf(exception);
+        return detail.Contains("does not support tools", StringComparison.OrdinalIgnoreCase)
+            || detail.Contains("does not support tool", StringComparison.OrdinalIgnoreCase)
+            || detail.Contains("tool use is not supported", StringComparison.OrdinalIgnoreCase)
+            || detail.Contains("tools are not supported", StringComparison.OrdinalIgnoreCase)
+            || detail.Contains("does not support function calling", StringComparison.OrdinalIgnoreCase)
+            || detail.Contains("function calling is not supported", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static ChatOptions? WithoutTools(ChatOptions? options)
+    {
+        if (options?.Tools is not { Count: > 0 }) return options;
+        var copy = options.Clone();
+        copy.Tools = null;
+        copy.ToolMode = null;
+        copy.AllowMultipleToolCalls = null;
+        return copy;
     }
 
     public override async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
@@ -45,6 +81,8 @@ internal sealed class ProviderErrorChatClient(IChatClient inner, ProviderProfile
         ChatOptions? options = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        if (_toolsUnsupported) options = WithoutTools(options);
+
         // Idle timeout for streams: the clock restarts with every update received.
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(_timeout);
@@ -86,6 +124,7 @@ internal sealed class ProviderErrorChatClient(IChatClient inner, ProviderProfile
         int? status = StatusOf(exception);
         string detail = DetailOf(exception);
 
+
         // Some providers answer 400 for decommissioned / unknown models.
         bool modelMentioned = detail.Contains("model", StringComparison.OrdinalIgnoreCase)
             && (detail.Contains("not found", StringComparison.OrdinalIgnoreCase)
@@ -97,6 +136,9 @@ internal sealed class ProviderErrorChatClient(IChatClient inner, ProviderProfile
         bool overloaded = detail.Contains("overloaded", StringComparison.OrdinalIgnoreCase)
             || detail.Contains("UNAVAILABLE", StringComparison.Ordinal);
 
+        // No HTTP answer at all: TLS refused, DNS failure, connection blocked (firewall / proxy / region).
+        var networkFailure = status is null ? FindNetworkFailure(exception) : null;
+
         var kind = status switch
         {
             404 => ModelFailureKind.ModelNotFound,
@@ -105,10 +147,12 @@ internal sealed class ProviderErrorChatClient(IChatClient inner, ProviderProfile
             429 => ModelFailureKind.RateLimited,
             >= 500 => ModelFailureKind.Unavailable,
             _ when overloaded => ModelFailureKind.Unavailable,
-            null when exception is HttpRequestException => ModelFailureKind.Unavailable,
+            null when networkFailure is not null => ModelFailureKind.Unreachable,
             null when modelMentioned => ModelFailureKind.ModelNotFound,
             _ => ModelFailureKind.Other,
         };
+
+        if (networkFailure is not null) detail = Clean(networkFailure.Message);
 
         if (kind == ModelFailureKind.Other && status is null) return null; // not a provider error: let it surface unchanged
 
@@ -123,15 +167,73 @@ internal sealed class ProviderErrorChatClient(IChatClient inner, ProviderProfile
             ModelFailureKind.RateLimited =>
                 $"{provider.Id} rate limit or quota reached (HTTP 429). Wait a moment, or add a key for another provider.{suffix}",
             ModelFailureKind.Unavailable =>
-                $"{provider.Id} model '{modelId}' is overloaded, unreachable or failing{(status is null ? string.Empty : $" (HTTP {status})")}. NexusAgent tries another configured model; otherwise try again shortly.{suffix}",
+                $"{provider.Id} model '{modelId}' is overloaded or failing{(status is null ? string.Empty : $" (HTTP {status})")}. NexusAgent tries another configured model; otherwise try again shortly.{suffix}",
+            ModelFailureKind.Unreachable =>
+                $"{provider.Id} cannot be reached from this computer: the connection was refused or blocked (often a firewall, proxy or regional restriction). " +
+                $"NexusAgent switches to another provider. To stop using {provider.Id}, remove its key in Agent keys. Network said: {detail}",
             _ => $"{provider.Id} returned HTTP {status} for model '{modelId}'.{suffix}",
         };
 
-        return new ModelProviderException(provider.Id, modelId, kind, status, message, exception);
+        var retryAfter = kind is ModelFailureKind.RateLimited or ModelFailureKind.Unavailable ? RetryAfterOf(exception) : null;
+        return new ModelProviderException(provider.Id, modelId, kind, status, message, exception, retryAfter);
+    }
+
+    /// <summary>Walks the exception tree (inner and aggregated exceptions).</summary>
+    private static IEnumerable<Exception> Chain(Exception exception)
+    {
+        var pending = new Stack<Exception>();
+        pending.Push(exception);
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            yield return current;
+            if (current is AggregateException aggregate)
+            {
+                foreach (var inner in aggregate.InnerExceptions) pending.Push(inner);
+            }
+            else if (current.InnerException is not null)
+            {
+                pending.Push(current.InnerException);
+            }
+        }
+    }
+
+    /// <summary>The most specific network-level cause (TLS, socket, DNS) of a failed request, if any.</summary>
+    private static Exception? FindNetworkFailure(Exception exception)
+    {
+        Exception? found = null;
+        foreach (var current in Chain(exception))
+        {
+            switch (current)
+            {
+                case System.Security.Authentication.AuthenticationException:
+                case System.Net.Sockets.SocketException:
+                    return current;
+                case HttpRequestException http when http.StatusCode is null:
+                    found ??= current;
+                    break;
+            }
+        }
+        return found;
+    }
+
+    private static string Clean(string text)
+    {
+        text = text.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return text.Length <= MaxDetailChars ? text : text[..MaxDetailChars] + " ...";
     }
 
     private static int? StatusOf(Exception exception)
     {
+        if (exception is AggregateException aggregate)
+        {
+            foreach (var inner in aggregate.InnerExceptions)
+            {
+                if (StatusOf(inner) is int innerStatus) return innerStatus;
+            }
+            return null;
+        }
+
         switch (exception)
         {
             case ClientResultException client when client.Status > 0:
@@ -177,7 +279,74 @@ internal sealed class ProviderErrorChatClient(IChatClient inner, ProviderProfile
         // The SDK's generic text adds nothing for the user.
         if (text.StartsWith("Service request failed.", StringComparison.Ordinal) && string.IsNullOrWhiteSpace(ExtractErrorMessage(body)))
             text = string.Empty;
-        return text.Length <= MaxDetailChars ? text : text[..MaxDetailChars] + " ...";
+        // Screen readers read every character: keep the provider's first sentence(s), drop links and metric dumps.
+        return FirstSentences(text, MaxSpokenDetailChars);
+    }
+
+    /// <summary>Keeps whole sentences up to <paramref name="max"/> characters.</summary>
+    internal static string FirstSentences(string text, int max)
+    {
+        if (text.Length <= max) return text;
+        int cut = -1;
+        for (int i = text.IndexOf(". ", StringComparison.Ordinal); i >= 0 && i < max; i = text.IndexOf(". ", i + 2, StringComparison.Ordinal))
+            cut = i + 1;
+        return cut >= 20 ? text[..cut] : text[..max].TrimEnd() + " ...";
+    }
+
+    /// <summary>The provider's requested wait: Retry-After header, Gemini "retryDelay", or "retry in 23.4s" text.</summary>
+    private static TimeSpan? RetryAfterOf(Exception exception)
+    {
+        foreach (var current in Chain(exception))
+        {
+            if (current is ClientResultException client)
+            {
+                try
+                {
+                    var raw = client.GetRawResponse();
+                    if (raw is not null)
+                    {
+                        if (raw.Headers.TryGetValue("Retry-After", out string? header) && ParseRetryAfterHeader(header) is { } fromHeader)
+                            return fromHeader;
+                        if (ParseRetryDelay(raw.Content?.ToString()) is { } fromBody)
+                            return fromBody;
+                    }
+                }
+                catch (Exception)
+                {
+                    // Raw response not available: fall back to the message text.
+                }
+            }
+
+            if (ParseRetryDelay(current.Message) is { } fromMessage) return fromMessage;
+        }
+        return null;
+    }
+
+    [GeneratedRegex(@"retry\s*(?:in|after)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:s|sec|secs|seconds)\b|""retryDelay""\s*:\s*""([0-9]+(?:\.[0-9]+)?)s""", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex RetryDelayRegex();
+
+    internal static TimeSpan? ParseRetryDelay(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return null;
+        var match = RetryDelayRegex().Match(text);
+        if (!match.Success) return null;
+        string number = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value;
+        return double.TryParse(number, NumberStyles.Float, CultureInfo.InvariantCulture, out double seconds)
+            ? TimeSpan.FromSeconds(seconds)
+            : null;
+    }
+
+    internal static TimeSpan? ParseRetryAfterHeader(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (double.TryParse(value.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double seconds))
+            return TimeSpan.FromSeconds(seconds);
+        if (DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at))
+        {
+            var wait = at - DateTimeOffset.UtcNow;
+            return wait > TimeSpan.Zero ? wait : TimeSpan.Zero;
+        }
+        return null;
     }
 
     /// <summary>Pulls error.message out of the common {"error":{"message":...}} / [{"error":...}] shapes.</summary>

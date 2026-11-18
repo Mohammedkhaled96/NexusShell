@@ -1,4 +1,5 @@
 using Microsoft.Agents.AI;
+using NexusShell.Agents.Application.Conversations;
 using NexusShell.Agents.Domain.Configuration;
 using NexusShell.Agents.Domain.Experts;
 
@@ -16,4 +17,7 @@ public interface ISkillsProviderFactory
     AIContextProvider? CreateFor(ExpertProfile expert, NexusAgentConfiguration configuration);
 
     IReadOnlyList<string> SkillDirectories { get; }
+
+    /// <summary>Every skill found in the skill folders (name and description), for the agent window.</summary>
+    IReadOnlyList<SkillOption> ListSkills();
 }

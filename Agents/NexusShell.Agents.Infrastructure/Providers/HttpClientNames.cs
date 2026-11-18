@@ -8,6 +8,9 @@ internal static class HttpClientNames
     /// <summary>Fast reachability checks for local model servers.</summary>
     public const string Probe = "nexus-agents-probe";
 
+    /// <summary>Model lists (Ollama /api/tags, OpenAI-compatible /models).</summary>
+    public const string Discovery = "nexus-agents-discovery";
+
     /// <summary>The fetch_url tool (no automatic redirects: every hop is re-validated).</summary>
     public const string WebTool = "nexus-agents-web";
 }

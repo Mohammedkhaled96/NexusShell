@@ -23,5 +23,10 @@ public sealed record ToolApprovalPolicy
 
     public IReadOnlySet<ToolRisk> AutoApprove { get; init; } = new HashSet<ToolRisk> { ToolRisk.ReadOnly };
 
+    /// <summary>Risk levels that are not offered to the agent at all (read-only / plan mode).</summary>
+    public IReadOnlySet<ToolRisk> Blocked { get; init; } = new HashSet<ToolRisk>();
+
     public bool RequiresApproval(ToolRisk risk) => !AutoApprove.Contains(risk);
+
+    public bool IsBlocked(ToolRisk risk) => Blocked.Contains(risk);
 }

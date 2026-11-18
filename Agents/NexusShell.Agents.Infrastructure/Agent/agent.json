@@ -31,6 +31,8 @@
     // "auto" resolves to the first AVAILABLE entry: a remote provider is available when its
     // API key variable is set; a local provider when its server answers.
     // Entries are "provider" (its defaultModel) or "provider/model".
+    // Local servers come last: free and private, used when no online provider is available
+    // (or every online provider is out of quota). For local servers the installed models are used.
     "preference": [
       "anthropic",
       "openai",
@@ -40,7 +42,11 @@
       "openrouter",
       "deepseek",
       "mistral",
-      "ollama"
+      "ollama",
+      "lmstudio",
+      "llamacpp",
+      "vllm",
+      "jan"
     ]
   },
 
@@ -72,7 +78,9 @@
       "defaultModel": "gemini-3.5-flash",
       // Tried in order if the default is retired, not enabled for your key, or overloaded.
       "fallbackModels": [ "gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-flash-lite-latest" ],
-      "fastModel": "gemini-3.5-flash-lite"
+      "fastModel": "gemini-3.5-flash-lite",
+      // gemini-3.5-flash is often overloaded and can hang; fail over to the next model after 30 s.
+      "timeoutSeconds": 30
     },
     "groq": {
       "kind": "openai-compatible",
@@ -105,13 +113,31 @@
       "kind": "ollama",
       "endpoint": "http://localhost:11434",
       "local": true,
-      "defaultModel": "llama3.2"
+      "defaultModel": "llama3.2",
+      // Offered in the agent window. Installed models are found automatically; these are suggestions
+      // (install one with: ollama pull <name>). Models without tool calling answer without tools.
+      "models": [ "qwen3", "qwen2.5-coder", "llama3.1", "gpt-oss:20b", "gemma3", "phi4-mini", "mistral", "deepseek-r1" ]
     },
+    // OpenAI-compatible local servers. No defaultModel needed: the models the server has loaded are used.
     "lmstudio": {
       "kind": "openai-compatible",
       "endpoint": "http://localhost:1234/v1",
       "local": true
-      // set "defaultModel" to the id of the model loaded in LM Studio, then add "lmstudio" to models.preference
+    },
+    "llamacpp": {
+      "kind": "openai-compatible",
+      "endpoint": "http://localhost:8080/v1",   // llama-server
+      "local": true
+    },
+    "vllm": {
+      "kind": "openai-compatible",
+      "endpoint": "http://localhost:8000/v1",
+      "local": true
+    },
+    "jan": {
+      "kind": "openai-compatible",
+      "endpoint": "http://localhost:1337/v1",
+      "local": true
     }
   },
 

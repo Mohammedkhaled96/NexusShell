@@ -84,6 +84,9 @@ internal sealed class ProviderDto
     /// <summary>Small, quick model for routing ("fast").</summary>
     public string? FastModel { get; set; }
 
+    /// <summary>Extra models offered in the agent window's model list (not used by "auto").</summary>
+    public List<string>? Models { get; set; }
+
     /// <summary>Maximum seconds for one model call before failing over (default 60 online, 180 local).</summary>
     public int? TimeoutSeconds { get; set; }
 

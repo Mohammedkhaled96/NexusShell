@@ -117,7 +117,7 @@ internal sealed class FileAgentConfigurationProvider(
 
         var providers = new Dictionary<string, ProviderDto>(bundled.Providers ?? [], StringComparer.OrdinalIgnoreCase);
         foreach (var (id, provider) in user.Providers ?? [])
-            providers[id] = provider;
+            providers[id] = providers.TryGetValue(id, out var defaults) ? MergeProvider(defaults, provider) : provider;
 
         var b = bundled.Orchestration ?? new OrchestrationDto();
         var u = user.Orchestration ?? new OrchestrationDto();
@@ -152,6 +152,23 @@ internal sealed class FileAgentConfigurationProvider(
             },
         };
     }
+
+    /// <summary>Only the fields the user wrote override the bundled provider (e.g. just "defaultModel").</summary>
+    internal static ProviderDto MergeProvider(ProviderDto bundled, ProviderDto user) => new()
+    {
+        Kind = user.Kind ?? bundled.Kind,
+        Endpoint = user.Endpoint ?? bundled.Endpoint,
+        EndpointEnv = user.EndpointEnv ?? bundled.EndpointEnv,
+        ApiKeyEnv = user.ApiKeyEnv ?? bundled.ApiKeyEnv,
+        Local = user.Local ?? bundled.Local,
+        DefaultModel = user.DefaultModel ?? bundled.DefaultModel,
+        FallbackModels = user.FallbackModels ?? bundled.FallbackModels,
+        FastModel = user.FastModel ?? bundled.FastModel,
+        Models = bundled.Models is null ? user.Models : user.Models is null ? bundled.Models : bundled.Models.Concat(user.Models).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+        TimeoutSeconds = user.TimeoutSeconds ?? bundled.TimeoutSeconds,
+        Enabled = user.Enabled ?? bundled.Enabled,
+        Extra = (bundled.Extra ?? []).Concat(user.Extra ?? []).GroupBy(p => p.Key, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Last().Value),
+    };
 
     internal static Dictionary<string, ProviderProfile> MapProviders(Dictionary<string, ProviderDto>? dtos, List<string> warnings)
     {
@@ -221,6 +238,7 @@ internal sealed class FileAgentConfigurationProvider(
                 DefaultModel = string.IsNullOrWhiteSpace(dto.DefaultModel) ? null : dto.DefaultModel.Trim(),
                 FallbackModels = dto.FallbackModels?.Where(m => !string.IsNullOrWhiteSpace(m)).Select(m => m.Trim()).ToList() ?? [],
                 FastModel = string.IsNullOrWhiteSpace(dto.FastModel) ? null : dto.FastModel.Trim(),
+                Models = dto.Models?.Where(m => !string.IsNullOrWhiteSpace(m)).Select(m => m.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? [],
                 RequestTimeout = dto.TimeoutSeconds is int seconds ? TimeSpan.FromSeconds(Math.Clamp(seconds, 1, 1800)) : null,
                 Enabled = dto.Enabled ?? true,
             };

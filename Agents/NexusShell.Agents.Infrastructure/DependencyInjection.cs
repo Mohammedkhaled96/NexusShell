@@ -2,12 +2,14 @@ using System.Net;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NexusShell.Agents.Application;
+using NexusShell.Agents.Application.Abstractions.Attachments;
 using NexusShell.Agents.Application.Abstractions.Configuration;
 using NexusShell.Agents.Application.Abstractions.Mcp;
 using NexusShell.Agents.Application.Abstractions.Models;
 using NexusShell.Agents.Application.Abstractions.Secrets;
 using NexusShell.Agents.Application.Abstractions.Skills;
 using NexusShell.Agents.Application.Abstractions.Tools;
+using NexusShell.Agents.Infrastructure.Attachments;
 using NexusShell.Agents.Infrastructure.Configuration;
 using NexusShell.Agents.Infrastructure.Mcp;
 using NexusShell.Agents.Infrastructure.Providers;
@@ -40,6 +42,7 @@ public static class DependencyInjection
 
         // Configuration & secrets
         services.TryAddSingleton<IAgentConfigurationProvider, FileAgentConfigurationProvider>();
+        services.TryAddSingleton<IAgentSettingsStore, UserAgentSettingsStore>();
         services.TryAddSingleton(new SecretStoreOptions());
         services.TryAddSingleton<ISecretStore, EnvironmentVariableSecretStore>();
         services.TryAddSingleton<ISecretRedactor, SecretRedactor>();
@@ -50,6 +53,7 @@ public static class DependencyInjection
         services.AddHttpClient(HttpClientNames.Llm, c => c.Timeout = TimeSpan.FromMinutes(5))
             .AddHttpMessageHandler<ThoughtSignatureHandler>();
         services.AddHttpClient(HttpClientNames.Probe, c => c.Timeout = TimeSpan.FromSeconds(2));
+        services.AddHttpClient(HttpClientNames.Discovery, c => c.Timeout = TimeSpan.FromSeconds(8));
         services.AddHttpClient(HttpClientNames.WebTool, c =>
             {
                 c.Timeout = TimeSpan.FromSeconds(30);
@@ -68,6 +72,10 @@ public static class DependencyInjection
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IModelProviderAdapter, OllamaProviderAdapter>());
         services.TryAddSingleton<IChatClientFactory, ChatClientFactory>();
         services.TryAddSingleton<IProviderAvailability, ProviderAvailability>();
+        services.TryAddSingleton<IModelDiscovery, ModelDiscovery>();
+
+        // Files and folders the user attaches to a message
+        services.TryAddSingleton<IAttachmentReader, FileAttachmentReader>();
 
         // MCP + skills
         services.TryAddSingleton<IMcpToolProvider, McpToolProvider>();

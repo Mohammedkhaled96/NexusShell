@@ -30,6 +30,7 @@ internal sealed class ModelResolver(
     IAgentConfigurationProvider configurationProvider,
     IProviderAvailability availability,
     IModelHealthRegistry health,
+    IModelDiscovery discovery,
     ILogger<ModelResolver> logger) : IModelResolver
 {
     public async Task<ResolvedModel?> ResolveAsync(string? requested, CancellationToken cancellationToken = default)
@@ -89,12 +90,24 @@ internal sealed class ModelResolver(
         var checks = config.Providers.Values
             .Where(p => p.Enabled)
             .Select(p => availability.GetStatusAsync(p, cancellationToken));
-        return await Task.WhenAll(checks).ConfigureAwait(false);
+        var statuses = await Task.WhenAll(checks).ConfigureAwait(false);
+
+        // A provider that recently failed as a whole (unreachable, key rejected, quota) is not offered.
+        return statuses
+            .Select(s => s.IsAvailable && health.GetProviderIssue(s.ProviderId) is { } issue
+                ? s with { IsAvailable = false, Detail = "Temporarily skipped: " + issue }
+                : s)
+            .ToList();
     }
+
+    /// <summary>Ollama reports "llama3.2:latest" for a model configured as "llama3.2".</summary>
+    internal static bool SameModel(string installed, string configured) =>
+        string.Equals(installed, configured, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(installed, configured + ":latest", StringComparison.OrdinalIgnoreCase);
 
     private async Task<ResolvedModel?> TryResolveFastAsync(NexusAgentConfiguration config, string providerId, CancellationToken cancellationToken)
     {
-        if (!config.Providers.TryGetValue(providerId, out var provider) || !provider.Enabled) return null;
+        if (!config.Providers.TryGetValue(providerId, out var provider) || !provider.Enabled || !health.IsProviderUsable(provider.Id)) return null;
         if (string.IsNullOrWhiteSpace(provider.FastModel) || !health.IsUsable(provider.Id, provider.FastModel)) return null;
         var status = await availability.GetStatusAsync(provider, cancellationToken).ConfigureAwait(false);
         return status.IsAvailable ? new ResolvedModel(provider, provider.FastModel) : null;
@@ -102,14 +115,32 @@ internal sealed class ModelResolver(
 
     private async Task<ResolvedModel?> TryResolveAsync(NexusAgentConfiguration config, ModelReference reference, CancellationToken cancellationToken)
     {
-        if (!config.Providers.TryGetValue(reference.ProviderId, out var provider) || !provider.Enabled) return null;
+        if (!config.Providers.TryGetValue(reference.ProviderId, out var provider) || !provider.Enabled || !health.IsProviderUsable(provider.Id)) return null;
+
+        var status = await availability.GetStatusAsync(provider, cancellationToken).ConfigureAwait(false);
+        if (!status.IsAvailable) return null;
 
         // Explicit model -> only that one; provider only -> default model, then fallbacks.
         List<string> candidates = reference.ModelId is not null ? [reference.ModelId] : provider.CandidateModels.ToList();
-        string? modelId = candidates.FirstOrDefault(m => health.IsUsable(provider.Id, m));
-        if (modelId is null) return null;
 
-        var status = await availability.GetStatusAsync(provider, cancellationToken).ConfigureAwait(false);
-        return status.IsAvailable ? new ResolvedModel(provider, modelId) : null;
+        // Local servers: prefer models that are actually installed (configured ones first),
+        // so "auto" works even when the configured default was never pulled.
+        if (reference.ModelId is null && provider.IsLocal)
+        {
+            var installed = await discovery.ListModelsAsync(provider, cancellationToken).ConfigureAwait(false);
+            if (installed.Count > 0)
+            {
+                candidates = candidates
+                    .Select(c => installed.FirstOrDefault(i => SameModel(i, c)))
+                    .Where(c => c is not null)
+                    .Select(c => c!)
+                    .Concat(installed)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+        }
+
+        string? modelId = candidates.FirstOrDefault(m => health.IsUsable(provider.Id, m));
+        return modelId is null ? null : new ResolvedModel(provider, modelId);
     }
 }

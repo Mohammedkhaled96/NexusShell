@@ -20,6 +20,9 @@ public sealed record ExpertResult(
 
     /// <summary>Set when the expert failed because of its model / provider.</summary>
     public ModelProviderException? ModelFailure { get; init; }
+
+    /// <summary>Set when no configured model or provider was usable at all.</summary>
+    public bool NoModelAvailable { get; init; }
 }
 
 /// <summary>
@@ -34,6 +37,7 @@ internal sealed class ResponseSynthesizer(
     ILogger<ResponseSynthesizer> logger)
 {
     private const int MaxExpertChars = 12_000;
+    private const int MaxAttempts = 3;
 
     public async Task<(string Text, UsageDetails? Usage)> SynthesizeAsync(
         string userRequest,
@@ -45,36 +49,50 @@ internal sealed class ResponseSynthesizer(
     {
         if (results.Count == 1) return (results[0].Text, null);
 
-        var model = await modelResolver.ResolveAsync(synthesizerModel, cancellationToken).ConfigureAwait(false);
-        if (model is null)
+        // If the synthesizer's provider is over quota or unreachable, switch provider and try again.
+        for (int attempt = 1; attempt <= MaxAttempts; attempt++)
         {
-            logger.LogWarning("No synthesizer model available; merging expert answers deterministically.");
-            return (MergeDeterministically(results), null);
+            var model = await modelResolver.ResolveAsync(synthesizerModel, cancellationToken).ConfigureAwait(false);
+            if (model is null)
+            {
+                logger.LogWarning("No synthesizer model available; merging expert answers deterministically.");
+                return (MergeDeterministically(results), null);
+            }
+
+            IChatClient client = chatClientFactory.CreateChatClient(model.Provider, model.ModelId);
+            try
+            {
+                var response = await client.GetResponseAsync(
+                    BuildPrompt(userRequest, results, history, sharedInstructions),
+                    new ChatOptions { Temperature = 0.2f },
+                    cancellationToken).ConfigureAwait(false);
+
+                return string.IsNullOrWhiteSpace(response.Text)
+                    ? (MergeDeterministically(results), response.Usage)
+                    : (response.Text, response.Usage);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                if (ModelFailures.Find(ex) is { CanFallBack: true } failure)
+                {
+                    modelHealth.Report(failure);
+                    if (attempt < MaxAttempts)
+                    {
+                        logger.LogInformation("Synthesizer: {Model} failed ({Reason}); switching to another model.", model, failure.ShortReason);
+                        continue;
+                    }
+                }
+
+                logger.LogWarning(ex, "Synthesizer ({Model}) failed; merging expert answers deterministically.", model);
+                return (MergeDeterministically(results), null);
+            }
+            finally
+            {
+                (client as IDisposable)?.Dispose();
+            }
         }
 
-        IChatClient client = chatClientFactory.CreateChatClient(model.Provider, model.ModelId);
-        try
-        {
-            var response = await client.GetResponseAsync(
-                BuildPrompt(userRequest, results, history, sharedInstructions),
-                new ChatOptions { Temperature = 0.2f },
-                cancellationToken).ConfigureAwait(false);
-
-            return string.IsNullOrWhiteSpace(response.Text)
-                ? (MergeDeterministically(results), response.Usage)
-                : (response.Text, response.Usage);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            if (ModelFailures.Find(ex) is { CanFallBack: true } failure)
-                modelHealth.ReportUnusable(failure.ProviderId, failure.ModelId, failure.Message, failure.QuarantineDuration);
-            logger.LogWarning(ex, "Synthesizer ({Model}) failed; merging expert answers deterministically.", model);
-            return (MergeDeterministically(results), null);
-        }
-        finally
-        {
-            (client as IDisposable)?.Dispose();
-        }
+        return (MergeDeterministically(results), null);
     }
 
     internal static List<ChatMessage> BuildPrompt(

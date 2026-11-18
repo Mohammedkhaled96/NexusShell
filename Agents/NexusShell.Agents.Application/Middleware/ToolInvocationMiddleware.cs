@@ -19,23 +19,25 @@ namespace NexusShell.Agents.Application.Middleware;
 /// </summary>
 internal sealed class ToolInvocationMiddleware(ISecretRedactor redactor, ILogger<ToolInvocationMiddleware> logger)
 {
+    /// <param name="displayName">Human-readable expert name used in progress reports (e.g. "Windows Expert").</param>
     public async ValueTask<object?> InvokeAsync(
         AIAgent agent,
         FunctionInvocationContext context,
         Func<FunctionInvocationContext, CancellationToken, ValueTask<object?>> next,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? displayName = null)
     {
         string tool = context.Function.Name;
-        string agentName = agent.Name ?? agent.Id;
+        string agentName = displayName ?? agent.Name ?? agent.Id;
 
-        AgentRunScope.Report(AgentProgressKind.ToolStarted, $"{agentName}: running tool {tool}", agentName);
+        AgentRunScope.Report(new AgentProgress(AgentProgressKind.ToolStarted, $"{agentName}: running tool {tool}", agentName) { ToolName = tool });
         var stopwatch = Stopwatch.StartNew();
 
         try
         {
             object? result = await next(context, cancellationToken).ConfigureAwait(false);
             logger.LogInformation("Tool {Tool} completed for {Agent} in {ElapsedMs} ms.", tool, agentName, stopwatch.ElapsedMilliseconds);
-            AgentRunScope.Report(AgentProgressKind.ToolCompleted, $"{agentName}: tool {tool} finished", agentName);
+            AgentRunScope.Report(new AgentProgress(AgentProgressKind.ToolCompleted, $"{agentName}: tool {tool} finished", agentName) { ToolName = tool });
             return RedactResult(result);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -45,7 +47,7 @@ internal sealed class ToolInvocationMiddleware(ISecretRedactor redactor, ILogger
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Tool {Tool} failed for {Agent} after {ElapsedMs} ms.", tool, agentName, stopwatch.ElapsedMilliseconds);
-            AgentRunScope.Report(AgentProgressKind.Warning, $"{agentName}: tool {tool} failed", agentName);
+            AgentRunScope.Report(new AgentProgress(AgentProgressKind.ToolFailed, $"{agentName}: tool {tool} failed", agentName) { ToolName = tool });
             return $"Tool '{tool}' failed: {redactor.Redact(ex.Message)}";
         }
     }

@@ -22,7 +22,7 @@ internal sealed class AnthropicProviderAdapter(IHttpClientFactory httpClientFact
         {
             ApiKey = apiKey,
             HttpClient = httpClientFactory.CreateClient(HttpClientNames.Llm),
-            MaxRetries = 1, // fail over to the next model instead of a long backoff
+            MaxRetries = 0, // never sleep on 429/529: NexusAgent fails over to the next model immediately
         };
         if (endpoint is not null) options.BaseUrl = endpoint.ToString().TrimEnd('/');
 

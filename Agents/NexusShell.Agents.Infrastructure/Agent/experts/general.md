@@ -3,7 +3,7 @@ name: General Assistant
 description: Friendly generalist for everyday questions, explanations, planning and anything that does not clearly belong to a specialist.
 model: auto
 keywords: [explain, summarize, summary, plan, idea, help, translate, اشرح, ملخص, ساعدني]
-tools: [system, terminal]
+tools: [system, terminal, filesystem]
 skills: ["*"]
 temperature: 0.4
 ---

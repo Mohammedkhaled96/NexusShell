@@ -14,8 +14,14 @@ public interface INexusAgentService
 {
     Task<AgentHealthReport> GetHealthAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Models, experts, tools, skills and MCP servers the user can choose from.</summary>
+    Task<AgentCatalog> GetCatalogAsync(CancellationToken cancellationToken = default);
+
     /// <param name="initialContext">Optional context (e.g. terminal output) attached to the first message.</param>
     Task<INexusAgentConversation> StartConversationAsync(string? initialContext = null, CancellationToken cancellationToken = default);
+
+    /// <param name="options">Model, expert, permissions, working folder and turned-off capabilities.</param>
+    Task<INexusAgentConversation> StartConversationAsync(string? initialContext, ConversationOptions options, CancellationToken cancellationToken = default);
 
     /// <summary>Re-read configuration, experts and MCP definitions on the next conversation.</summary>
     void ReloadConfiguration();
@@ -27,12 +33,27 @@ public interface INexusAgentConversation
 
     OrchestrationMode Mode { get; }
 
+    ConversationOptions Options { get; }
+
+    /// <summary>Applies new choices; the conversation keeps its history.</summary>
+    Task UpdateOptionsAsync(ConversationOptions options, CancellationToken cancellationToken = default);
+
+    /// <summary>Rebuilds the agent from the latest configuration (new providers, models, MCP servers); history is kept.</summary>
+    Task ReloadAsync(CancellationToken cancellationToken = default);
+
     Task<AgentTurnResult> SendAsync(string message, IProgress<AgentProgress>? progress = null, CancellationToken cancellationToken = default);
+
+    /// <param name="attachments">Files and folders whose content is shared with the agent for this message.</param>
+    Task<AgentTurnResult> SendAsync(string message, IReadOnlyList<string> attachments, IProgress<AgentProgress>? progress = null, CancellationToken cancellationToken = default);
 }
 
 public sealed record ExpertContribution(string ExpertId, string ExpertName, double Weight, string Model, bool Succeeded, string? Error);
 
-public sealed record AgentTurnResult(string Text, IReadOnlyList<ExpertContribution> Experts, UsageDetails? Usage);
+public sealed record AgentTurnResult(string Text, IReadOnlyList<ExpertContribution> Experts, UsageDetails? Usage)
+{
+    /// <summary>What happened to attachments (skipped files and why).</summary>
+    public IReadOnlyList<string> AttachmentNotes { get; init; } = [];
+}
 
 public sealed record ExpertHealth(string Id, string Name, string Model, bool Enabled, bool Routable);
 

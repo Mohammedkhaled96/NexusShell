@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text;
 using Microsoft.Extensions.AI;
 using NexusShell.Agents.Application.Abstractions.Tools;
+using NexusShell.Agents.Infrastructure.Tools;
 using NexusShell.Agents.Domain.Tools;
 
 namespace NexusShell.Agents.Infrastructure.Tools.FileSystem;
@@ -37,11 +38,11 @@ internal sealed class FileSystemToolProvider : IAgentToolProvider
     }
 
     private static string ListDirectory(
-        [Description("Directory path. Relative paths are resolved from the current directory.")] string path,
+        [Description("Directory path. Relative paths (and \".\") are resolved from the working folder.")] string path,
         [Description("Optional wildcard filter such as *.cs")] string? pattern = null,
         [Description("Include sub-directories")] bool recursive = false)
     {
-        string full = Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
+        string full = ToolPaths.Resolve(path);
         if (!Directory.Exists(full)) return $"Directory not found: {full}";
 
         var options = new EnumerationOptions { RecurseSubdirectories = recursive, IgnoreInaccessible = true, MaxRecursionDepth = 6 };
@@ -63,11 +64,11 @@ internal sealed class FileSystemToolProvider : IAgentToolProvider
     }
 
     private static string ReadTextFile(
-        [Description("File path.")] string path,
+        [Description("File path (relative paths are resolved from the working folder).")] string path,
         [Description("First line to return (1-based).")] int startLine = 1,
         [Description("Maximum number of lines to return.")] int maxLines = 400)
     {
-        string full = Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
+        string full = ToolPaths.Resolve(path);
         if (IsBlocked(full)) return "Refused: this file looks like it contains credentials (keys, certificates, .env). Ask the user to inspect it themselves.";
         if (!File.Exists(full)) return $"File not found: {full}";
 
@@ -80,12 +81,12 @@ internal sealed class FileSystemToolProvider : IAgentToolProvider
     }
 
     private static string SearchFiles(
-        [Description("Root directory to search.")] string root,
+        [Description("Root directory to search (\".\" = the working folder).")] string root,
         [Description("File name wildcard, e.g. *.json")] string pattern = "*",
         [Description("Optional text that must appear in the file (case-insensitive).")] string? containsText = null,
         [Description("Maximum results.")] int maxResults = 50)
     {
-        string full = Path.GetFullPath(Environment.ExpandEnvironmentVariables(root));
+        string full = ToolPaths.Resolve(root);
         if (!Directory.Exists(full)) return $"Directory not found: {full}";
 
         var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, MaxRecursionDepth = 12 };
@@ -124,11 +125,11 @@ internal sealed class FileSystemToolProvider : IAgentToolProvider
     }
 
     private static string WriteTextFile(
-        [Description("File path to write.")] string path,
+        [Description("File path to write (relative paths are resolved from the working folder).")] string path,
         [Description("Full text content.")] string content,
         [Description("Overwrite if the file already exists.")] bool overwrite = false)
     {
-        string full = Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
+        string full = ToolPaths.Resolve(path);
         if (IsBlocked(full)) return "Refused: writing credential files is not allowed.";
         if (File.Exists(full) && !overwrite) return $"File already exists: {full}. Set overwrite=true to replace it.";
 

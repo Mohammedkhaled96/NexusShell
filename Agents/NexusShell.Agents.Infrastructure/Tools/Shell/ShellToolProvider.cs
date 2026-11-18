@@ -23,7 +23,7 @@ internal sealed class ShellToolProvider(ILogger<ShellToolProvider> logger) : IAg
     {
         yield return new AgentToolDescriptor(
             AIFunctionFactory.Create(RunAsync, "run_shell_command",
-                "Run a shell command and return exit code, stdout and stderr. The user must approve every command. Prefer read-only commands; never run interactive programs."),
+                "Run a shell command in a NEW, separate process and return exit code, stdout and stderr. It is not the user's terminal session: it has no command history or variables from it (use get_terminal_output to see what the user ran). The user must approve every command. Prefer read-only commands; never run interactive programs."),
             ToolRisk.Destructive,
             Category,
             ForceApproval: true);
@@ -32,7 +32,7 @@ internal sealed class ShellToolProvider(ILogger<ShellToolProvider> logger) : IAg
     private async Task<string> RunAsync(
         [Description("The exact command to run.")] string command,
         [Description("powershell (default on Windows), pwsh, cmd or bash.")] string? shell = null,
-        [Description("Working directory (optional).")] string? workingDirectory = null,
+        [Description("Working directory (optional; defaults to the working folder the user chose).")] string? workingDirectory = null,
         [Description("Timeout in seconds (5-600).")] int timeoutSeconds = 120,
         CancellationToken cancellationToken = default)
     {
@@ -45,9 +45,10 @@ internal sealed class ShellToolProvider(ILogger<ShellToolProvider> logger) : IAg
             _ => Create(OperatingSystem.IsWindows() ? "powershell.exe" : "pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command),
         };
 
+        workingDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? ToolPaths.WorkingDirectory : workingDirectory;
         if (!string.IsNullOrWhiteSpace(workingDirectory))
         {
-            string full = Path.GetFullPath(Environment.ExpandEnvironmentVariables(workingDirectory));
+            string full = ToolPaths.Resolve(workingDirectory);
             if (!Directory.Exists(full)) return $"Working directory not found: {full}";
             startInfo.WorkingDirectory = full;
         }

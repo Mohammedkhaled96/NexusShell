@@ -21,6 +21,7 @@ internal sealed class LlmRoutingGate(
     ILogger<LlmRoutingGate> logger) : IRoutingGate
 {
     private const int MaxRequestChars = 4_000;
+    private const int MaxAttempts = 3;
 
     public string Name => "llm";
 
@@ -28,18 +29,19 @@ internal sealed class LlmRoutingGate(
     {
         if (request.Candidates.Count == 0) return [];
 
-        var model = await modelResolver.ResolveAsync(request.Settings.Model, cancellationToken).ConfigureAwait(false);
-        if (model is null)
-        {
-            logger.LogInformation("LLM router has no available model; using keyword gate.");
-            return null;
-        }
-
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(request.Settings.Timeout);
 
-        try
+        // If the routing model's provider is over quota or unreachable, switch provider and try again.
+        for (int attempt = 1; attempt <= MaxAttempts; attempt++)
         {
+            var model = await modelResolver.ResolveAsync(request.Settings.Model, cancellationToken).ConfigureAwait(false);
+            if (model is null)
+            {
+                logger.LogInformation("LLM router has no available model; using keyword gate.");
+                return null;
+            }
+
             IChatClient client = chatClientFactory.CreateChatClient(model.Provider, model.ModelId);
             try
             {
@@ -53,23 +55,33 @@ internal sealed class LlmRoutingGate(
                     logger.LogWarning("LLM router ({Model}) returned unparseable output; using keyword gate.", model);
                 return scores;
             }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                logger.LogWarning("LLM router timed out after {Timeout}; using keyword gate.", request.Settings.Timeout);
+                return null;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                if (ModelFailures.Find(ex) is { CanFallBack: true } failure)
+                {
+                    modelHealth.Report(failure);
+                    if (attempt < MaxAttempts)
+                    {
+                        logger.LogInformation("LLM router: {Model} failed ({Reason}); switching to another model.", model, failure.ShortReason);
+                        continue;
+                    }
+                }
+
+                logger.LogWarning(ex, "LLM router failed; using keyword gate.");
+                return null;
+            }
             finally
             {
                 (client as IDisposable)?.Dispose();
             }
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            logger.LogWarning("LLM router timed out after {Timeout}; using keyword gate.", request.Settings.Timeout);
-            return null;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            if (ModelFailures.Find(ex) is { CanFallBack: true } failure)
-                modelHealth.ReportUnusable(failure.ProviderId, failure.ModelId, failure.Message, failure.QuarantineDuration);
-            logger.LogWarning(ex, "LLM router failed; using keyword gate.");
-            return null;
-        }
+
+        return null;
     }
 
     internal static List<ChatMessage> BuildPrompt(RoutingRequest request)

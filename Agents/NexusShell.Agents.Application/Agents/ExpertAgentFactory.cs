@@ -55,7 +55,8 @@ internal sealed class ExpertAgentFactory(
     ISecretRedactor redactor,
     ToolInvocationMiddleware toolMiddleware,
     ILoggerFactory loggerFactory,
-    IServiceProvider services) : IExpertAgentFactory
+    IServiceProvider services,
+    IModelHealthRegistry modelHealth) : IExpertAgentFactory
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<ExpertAgentFactory>();
 
@@ -66,8 +67,7 @@ internal sealed class ExpertAgentFactory(
         CancellationToken cancellationToken = default)
     {
         var model = await modelResolver.ResolveAsync(expert.Model, cancellationToken).ConfigureAwait(false)
-            ?? throw new AgentUnavailableException(
-                $"No model is available for '{expert.Name}'. Set a provider API key (as a user environment variable) or start a local model server such as Ollama.");
+            ?? throw new AgentUnavailableException(NoModelMessage(expert, configuration));
 
         IChatClient chatClient = chatClientFactory.CreateChatClient(model.Provider, model.ModelId);
 
@@ -77,6 +77,13 @@ internal sealed class ExpertAgentFactory(
         void AddTool(AgentToolDescriptor descriptor)
         {
             if (risks.ContainsKey(descriptor.Name)) return;
+            // Turned off by the user (by name or category), or blocked by read-only mode.
+            if (configuration.DisabledTools.Contains(descriptor.Name)
+                || configuration.DisabledTools.Contains(descriptor.Category)
+                || configuration.ToolPolicy.IsBlocked(descriptor.Risk))
+            {
+                return;
+            }
             risks[descriptor.Name] = descriptor.Risk;
             bool requiresApproval = descriptor.ForceApproval || (!descriptor.SkipApproval && configuration.ToolPolicy.RequiresApproval(descriptor.Risk));
             tools.Add(requiresApproval ? new ApprovalRequiredAIFunction(descriptor.Function) : descriptor.Function);
@@ -128,7 +135,7 @@ internal sealed class ExpertAgentFactory(
         AIAgent agent = chatClient
             .AsAIAgent(options, loggerFactory, services)
             .AsBuilder()
-            .Use(toolMiddleware.InvokeAsync)
+            .Use((inner, context, next, token) => toolMiddleware.InvokeAsync(inner, context, next, token, expert.Name))
             .UseOpenTelemetry(AgentTelemetry.SourceName)
             .Build(services);
 
@@ -138,13 +145,35 @@ internal sealed class ExpertAgentFactory(
             redactor,
             risks,
             configuration.Orchestration.MaxApprovalRounds,
-            loggerFactory.CreateLogger<InlineToolApprovalAgent>());
+            loggerFactory.CreateLogger<InlineToolApprovalAgent>(),
+            expert.Name);
 
         _logger.LogInformation(
             "Expert {Expert} ready on {Model} (depth {Depth}, {ToolCount} tools, {SubAgentCount} sub-agents, skills: {HasSkills}).",
             expert.Id, model, depth, tools.Count, subAgents.Count, skills is not null);
 
         return new ExpertAgent(expert, agent, model);
+    }
+
+    /// <summary>Explains WHY nothing is usable: providers skipped for now (quota, unreachable, key) or none configured.</summary>
+    private string NoModelMessage(ExpertProfile expert, NexusAgentConfiguration configuration)
+    {
+        var skipped = configuration.Providers.Values
+            .Where(p => p.Enabled)
+            .Select(p => (p.Id, Issue: modelHealth.GetProviderIssue(p.Id)))
+            .Where(x => x.Issue is not null)
+            .Select(x => $"{x.Id} ({x.Issue})")
+            .ToList();
+
+        if (skipped.Count > 0)
+        {
+            return $"No model is available for '{expert.Name}' right now. Skipped for now: {string.Join("; ", skipped)}. " +
+                   "NexusAgent uses them again automatically when they recover; you can also add another provider's key in Agent keys.";
+        }
+
+        return modelHealth.TimeUntilNextRecovery() is not null
+            ? $"No model is available for '{expert.Name}' right now: the configured models are temporarily unavailable. Try again shortly."
+            : $"No model is available for '{expert.Name}'. Set a provider API key (as a user environment variable) or start a local model server such as Ollama.";
     }
 
     private static IEnumerable<ExpertProfile> ResolveSubAgents(ExpertProfile expert, NexusAgentConfiguration configuration)
@@ -171,7 +200,8 @@ internal sealed class ExpertAgentFactory(
         {
             sb.AppendLine()
               .AppendLine("## Sub-agents")
-              .AppendLine("You can delegate focused sub-tasks to these specialists. Delegate only when it clearly improves the answer, and give them complete context:");
+              .AppendLine("You can delegate focused sub-tasks to these specialists. Delegate only when it clearly improves the answer, and give them complete context.")
+              .AppendLine("When a task needs a tool you do not have (for example writing files or running commands), delegate it to a specialist that has it instead of asking the user to do it:");
             foreach (var sub in subAgents)
                 sb.Append("- ").Append(SubAgentTool.ToolName(sub.Id)).Append(": ").AppendLine(sub.Description);
         }

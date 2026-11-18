@@ -26,9 +26,9 @@ internal sealed class OpenAICompatibleProviderAdapter(IHttpClientFactory httpCli
         {
             Transport = new HttpClientPipelineTransport(httpClientFactory.CreateClient(HttpClientNames.Llm)),
             NetworkTimeout = TimeSpan.FromMinutes(5),
-            // One quick retry only: on an overloaded model NexusAgent fails over to the
-            // next model instead of waiting through the SDK's long backoff.
-            RetryPolicy = new ClientRetryPolicy(maxRetries: 1),
+            // One quick retry for transient errors, none for quota (429): NexusAgent switches
+            // to another provider instead of waiting through the SDK's backoff.
+            RetryPolicy = new NoQuotaRetryPolicy(),
         };
 
         if (endpoint is not null)

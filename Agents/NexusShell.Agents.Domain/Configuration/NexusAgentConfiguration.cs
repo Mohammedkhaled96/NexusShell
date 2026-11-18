@@ -39,6 +39,15 @@ public sealed record NexusAgentConfiguration
     /// <summary>Instructions shared by every expert (house rules: tone, accessibility, safety).</summary>
     public string SharedInstructions { get; init; } = string.Empty;
 
+    /// <summary>Tool names or categories (e.g. "shell", "mcp:github") turned off by the user.</summary>
+    public IReadOnlySet<string> DisabledTools { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Skill names turned off by the user.</summary>
+    public IReadOnlySet<string> DisabledSkills { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Folder the user is working in: relative paths and shell commands use it.</summary>
+    public string? WorkingDirectory { get; init; }
+
     /// <summary>Non-fatal problems found while loading (invalid entries are skipped, not fatal).</summary>
     public IReadOnlyList<string> Warnings { get; init; } = [];
 

@@ -37,6 +37,9 @@ public sealed class MixtureOfExpertsAgent : AIAgent
     /// <summary>AdditionalProperties key holding the <see cref="RoutingDecision"/> of a response.</summary>
     public const string RoutingDecisionKey = "nexus.routing";
 
+    /// <summary>Longest wait for a provider to recover (e.g. a per-minute quota) before giving up.</summary>
+    internal static readonly TimeSpan MaxRecoveryWait = TimeSpan.FromSeconds(75);
+
     private readonly NexusAgentConfiguration _configuration;
     private readonly IExpertRouter _router;
     private readonly IExpertAgentFactory _expertFactory;
@@ -100,9 +103,11 @@ public sealed class MixtureOfExpertsAgent : AIAgent
             selected.Add((new ExpertScore(fallback.Id, 1.0, "default expert"), fallback));
         }
 
-        AgentRunScope.Report(
-            AgentProgressKind.ExpertsSelected,
-            "Experts: " + string.Join(", ", selected.Select(s => s.Profile.Name)));
+        var selectedNames = selected.Select(s => s.Profile.Name).ToList();
+        AgentRunScope.Report(new AgentProgress(AgentProgressKind.ExpertsSelected, "Experts: " + string.Join(", ", selectedNames))
+        {
+            Experts = selectedNames,
+        });
 
         // 2. Experts in parallel.
         var results = (await Task.WhenAll(selected.Select(s =>
@@ -115,7 +120,7 @@ public sealed class MixtureOfExpertsAgent : AIAgent
             var fallback = DefaultExpert();
             if (fallback is not null && results.All(r => !string.Equals(r.ExpertId, fallback.Id, StringComparison.OrdinalIgnoreCase)))
             {
-                AgentRunScope.Report(AgentProgressKind.Warning, $"Selected experts failed; trying {fallback.Name}");
+                AgentRunScope.Report(AgentProgressKind.FallbackExpert, $"Selected experts failed; trying {fallback.Name}", fallback.Name);
                 var retry = await RunExpertAsync(fallback, 1.0, input, moeSession, cancellationToken).ConfigureAwait(false);
                 results.Add(retry);
                 if (retry.Succeeded) succeeded.Add(retry);
@@ -255,32 +260,65 @@ public sealed class MixtureOfExpertsAgent : AIAgent
         MixtureOfExpertsSession session,
         CancellationToken cancellationToken)
     {
-        const int MaxModelAttempts = 4;
+        const int MaxModelAttempts = 6;
         ExpertResult result = null!;
         ModelProviderException? lastModelFailure = null;
+        bool waitedForRecovery = false;
+
         for (int attempt = 1; attempt <= MaxModelAttempts; attempt++)
         {
             result = await RunExpertOnceAsync(profile, weight, input, session, cancellationToken).ConfigureAwait(false);
             if (result.Succeeded) return result;
 
-            if (result.ModelFailure is not { CanFallBack: true } failure)
+            if (result.ModelFailure is { CanFallBack: true } failure)
             {
-                // Ran out of models after retirements: report the real cause, not just "no model available".
-                return lastModelFailure is null
-                    ? result
-                    : result with { Error = lastModelFailure.Message + " No other configured model is available; add a working model to \"fallbackModels\" in agent.json or set another provider's key." };
+                // Model retired / overloaded, or provider over quota / unreachable: avoid it and switch.
+                lastModelFailure = failure;
+                _modelHealth.Report(failure);
+                _experts.TryRemove(profile.Id, out _);
+                var state = session.GetExpertState(profile.Id);
+                state.Session = null;     // the next model starts a fresh session...
+                state.SeenTurns = 0;      // ...and catches up from the shared transcript
+                AgentRunScope.Report(new AgentProgress(AgentProgressKind.ModelUnavailable, $"{profile.Name}: model {failure.ModelId} is unavailable, trying another model", profile.Name)
+                {
+                    Model = failure.ProviderId + "/" + failure.ModelId,
+                    Provider = failure.ProviderId,
+                    Failure = failure.Kind,
+                });
+                continue;
             }
 
-            lastModelFailure = failure;
-            _modelHealth.ReportUnusable(failure.ProviderId, failure.ModelId, failure.Message, failure.QuarantineDuration);
-            _experts.TryRemove(profile.Id, out _);
-            var state = session.GetExpertState(profile.Id);
-            state.Session = null;     // the next model starts a fresh session...
-            state.SeenTurns = 0;      // ...and catches up from the shared transcript
-            AgentRunScope.Report(AgentProgressKind.Warning, $"{profile.Name}: model {failure.ModelId} is unavailable, trying another model", profile.Name);
+            // Nothing usable right now. If a provider recovers soon (per-minute quota), wait once and retry.
+            if (result.NoModelAvailable && !waitedForRecovery
+                && _modelHealth.TimeUntilNextRecovery() is { } wait && wait <= MaxRecoveryWait)
+            {
+                waitedForRecovery = true;
+                var delay = wait + TimeSpan.FromSeconds(1);
+                AgentRunScope.Report(new AgentProgress(AgentProgressKind.WaitingForQuota, $"{profile.Name}: every provider is at its limit; waiting {delay.TotalSeconds:0} seconds", profile.Name)
+                {
+                    Delay = delay,
+                });
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
+            // Out of options: report the real cause, not just "no model available".
+            return lastModelFailure is null
+                ? result
+                : result with { Error = lastModelFailure.Message + " " + NextStepAdvice(lastModelFailure.Kind) };
         }
+
         return result;
     }
+
+    /// <summary>What the user can do when no other model or provider is left.</summary>
+    private static string NextStepAdvice(ModelFailureKind kind) => kind switch
+    {
+        ModelFailureKind.RateLimited => "No other provider is available right now; try again in about a minute.",
+        ModelFailureKind.Unavailable => "No other model is available right now; try again shortly.",
+        ModelFailureKind.ModelNotFound => "No other configured model is available; add a working model to \"fallbackModels\" in agent.json.",
+        _ => "No other provider is available; add another provider's key in Agent keys.",
+    };
 
     private async Task<ExpertResult> RunExpertOnceAsync(
         ExpertProfile profile,
@@ -316,7 +354,7 @@ public sealed class MixtureOfExpertsAgent : AIAgent
                 }
                 messages.AddRange(input);
 
-                AgentRunScope.Report(AgentProgressKind.ExpertStarted, $"{profile.Name} is working ({model})", profile.Name);
+                AgentRunScope.Report(new AgentProgress(AgentProgressKind.ExpertStarted, $"{profile.Name} is working ({model})", profile.Name) { Model = model });
                 var response = await expert.Agent.RunAsync(messages, state.Session, null, cancellationToken).ConfigureAwait(false);
                 state.SeenTurns = session.TurnCount + 1;
                 AgentRunScope.Report(AgentProgressKind.ExpertCompleted, $"{profile.Name} finished", profile.Name);
@@ -338,7 +376,11 @@ public sealed class MixtureOfExpertsAgent : AIAgent
             _logger.LogWarning(ex, "Expert {Expert} failed.", profile.Id);
             string error = modelFailure?.Message
                 ?? (ex is AgentUnavailableException ? ex.Message : $"{ex.GetType().Name}: {ex.Message}");
-            return new ExpertResult(profile.Id, profile.Name, weight, model, string.Empty, null, error) { ModelFailure = modelFailure };
+            return new ExpertResult(profile.Id, profile.Name, weight, model, string.Empty, null, error)
+            {
+                ModelFailure = modelFailure,
+                NoModelAvailable = ex is AgentUnavailableException,
+            };
         }
     }
 
