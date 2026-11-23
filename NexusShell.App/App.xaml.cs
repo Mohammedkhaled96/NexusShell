@@ -98,10 +98,25 @@ namespace NexusShell.App
             // framework's secure "deny all" default.
             services.AddSingleton<NexusShell.Agents.Application.Abstractions.Approval.IToolApprovalHandler,
                                   Services.Agents.WpfToolApprovalHandler>();
+            // Chats are saved where the user chose (Chat actions > Change where chats are saved).
+            services.AddSingleton(sp =>
+            {
+                string configured = sp.GetRequiredService<IConfigManager>().Load().AI.ChatsDirectory;
+                return new NexusShell.Agents.Infrastructure.Chats.ChatStorageOptions
+                {
+                    Directory = string.IsNullOrWhiteSpace(configured)
+                        ? NexusShell.Agents.Infrastructure.Chats.ChatStorageOptions.DefaultDirectory
+                        : configured,
+                };
+            });
             services.AddNexusAgents();
+            // Scheduled agent tasks run while NexusShell is open.
+            services.AddHostedService<Services.Agents.AgentSchedulerHostedService>();
             services.AddAgentToolProvider<Services.Agents.TerminalToolProvider>();
             services.AddTransient<AgentKeysViewModel>();
             services.AddTransient<AgentProvidersViewModel>();
+            services.AddTransient<AgentMemoryViewModel>();
+            services.AddTransient<AgentScheduleViewModel>();
 
             services.AddSingleton<IOutputHistoryService, OutputHistoryService>();
             services.AddSingleton<INotificationService, NotificationService>();

@@ -1,4 +1,5 @@
 using NexusShell.Agents.Application.Conversations;
+using NexusShell.Agents.Application.Memory;
 using NexusShell.Agents.Application.Progress;
 using NexusShell.Agents.Domain.Orchestration;
 using Microsoft.Extensions.Logging;
@@ -29,6 +30,8 @@ namespace NexusShell.App.ViewModels
         private readonly INexusAgentService? _agentService;
         private readonly Action? _openAgentKeys;
         private readonly Action? _openProviders;
+        private readonly IAgentMemory? _memory;
+        private readonly Action<string?>? _openMemory;
         private readonly string _initialContext;
         private readonly List<Dictionary<string, string>> _history;
 
@@ -124,6 +127,7 @@ namespace NexusShell.App.ViewModels
         public ICommand CopyMessageCommand { get; }
         public ICommand ManageAgentKeysCommand { get; }
         public ICommand ManageProvidersCommand { get; }
+        public ICommand OpenMemoryCommand { get; }
         public ICommand RefreshAgentCommand { get; }
         public ICommand ClearWorkingFolderCommand { get; }
         public ICommand RemoveAttachmentCommand { get; }
@@ -141,13 +145,20 @@ namespace NexusShell.App.ViewModels
             INexusAgentService? agentService = null,
             Action? openAgentKeys = null,
             ILoggerFactory? loggerFactory = null,
-            Action? openProviders = null)
+            Action? openProviders = null,
+            IAgentMemory? memory = null,
+            Action<string?>? openMemory = null,
+            NexusShell.Agents.Application.Chats.IChatLibrary? chats = null,
+            NexusShell.Agents.Application.Scheduling.IAgentScheduler? scheduler = null,
+            Action<Action<string>?>? openSchedule = null)
         {
             _aiService = aiService;
             _configManager = configManager;
             _agentService = agentService;
             _openAgentKeys = openAgentKeys;
             _openProviders = openProviders;
+            _memory = memory;
+            _openMemory = openMemory;
             _initialContext = initialContext ?? string.Empty;
 
             var settings = _configManager.Load();
@@ -191,7 +202,7 @@ namespace NexusShell.App.ViewModels
                 async _ => await ExecuteSendMessage(),
                 _ => !IsSending && !string.IsNullOrWhiteSpace(CurrentMessage));
 
-            ClearChatCommand = new RelayCommand(_ => ClearChat());
+            ClearChatCommand = new RelayCommand(_ => NewChat(), _ => !IsSending);
 
             CopyMessageCommand = new RelayCommand(obj =>
             {
@@ -222,6 +233,10 @@ namespace NexusShell.App.ViewModels
                     await ReloadAgentAsync();
                 },
                 _ => _openProviders != null);
+
+            OpenMemoryCommand = new RelayCommand(
+                _ => _openMemory?.Invoke(Workspace.WorkingDirectory),
+                _ => _openMemory != null);
 
             RefreshAgentCommand = new RelayCommand(async _ =>
             {
@@ -261,6 +276,7 @@ namespace NexusShell.App.ViewModels
 
             AddAiMessage(greeting);
 
+            InitializeChats(chats, scheduler, openSchedule);
             _ = RefreshAgentStatusAsync();
         }
 
@@ -317,6 +333,13 @@ namespace NexusShell.App.ViewModels
 
                 if (health.Warnings.Count > 0)
                     AgentStatus += $" {health.Warnings.Count} configuration warning(s) are listed in the log.";
+
+                // Memory and the context window are always on: say so when the chat opens.
+                if (IsAgentAvailable)
+                {
+                    int facts = _memory is null ? 0 : (await _memory.ListAsync()).Count;
+                    AgentStatus += $" Memory on ({facts} saved facts); context sized to each model; chats saved automatically.";
+                }
 
                 if (!_userChoseMode || !IsAgentAvailable)
                 {
@@ -483,6 +506,9 @@ namespace NexusShell.App.ViewModels
                 IsSending = false;
                 StatusText = DefaultStatusText;
             }
+
+            // Every answer is saved on the device, so the chat can be reopened and continued later.
+            await SaveChatAsync();
         }
 
         private async Task<string> SendViaAgentAsync(string message, IReadOnlyList<string> attachments, CancellationToken cancellationToken)
@@ -494,7 +520,12 @@ namespace NexusShell.App.ViewModels
             StatusText = AgentProgressNarrator.Sent(_steps.Language);
 
             // The latest choices always apply, even when they were made a moment ago (still settling).
-            if (_conversation is null) _conversation = await _agentService!.StartConversationAsync(_initialContext, Workspace.BuildOptions(), cancellationToken);
+            if (_conversation is null)
+            {
+                // A reopened chat continues with the agent's saved state (full context).
+                _conversation = await _agentService!.StartConversationAsync(_initialContext, Workspace.BuildOptions(), _resume, cancellationToken);
+                _resume = null;
+            }
             else await _conversation.UpdateOptionsAsync(Workspace.BuildOptions(), cancellationToken);
 
             // Progress<T> captures the UI SynchronizationContext: steps arrive on the UI thread, in order.
@@ -561,6 +592,9 @@ namespace NexusShell.App.ViewModels
             "/folder PATH  sets the working folder. /folder clear removes it. /folder alone says the current folder.\n" +
             "/attach PATH  attaches a file or folder to the next message. You can also write @PATH inside a message.\n" +
             "/tools  says which tools, skills and MCP servers are on.\n" +
+            "/remember TEXT  saves a fact to NexusAgent's long-term memory. /memory lists what it remembers. /forget ID deletes one memory.\n" +
+            "/new  starts a new chat. /chats lists saved chats. /open NUMBER or TITLE reopens one to continue it. /rename TITLE renames this chat.\n" +
+            "/schedule  opens scheduled tasks. /tasks lists them. You can also ask: every weekday at 9 check free disk space.\n" +
             "/status  says the agent status and current choices.\n" +
             "/reload  reloads providers, models and MCP servers.\n" +
             "/clear  clears the conversation.";
@@ -568,6 +602,8 @@ namespace NexusShell.App.ViewModels
         private static readonly HashSet<string> SlashCommands = new(StringComparer.OrdinalIgnoreCase)
         {
             "help", "?", "model", "models", "expert", "experts", "mode", "permissions", "folder", "cd", "attach", "tools", "status", "reload", "clear",
+            "remember", "memory", "memories", "forget",
+            "new", "chats", "open", "rename", "schedule", "tasks",
         };
 
         private async Task<bool> TryRunSlashCommandAsync(string message)
@@ -593,7 +629,16 @@ namespace NexusShell.App.ViewModels
                 "folder" or "cd" => FolderCommand(argument),
                 "attach" => AttachCommand(argument),
                 "tools" => $"{Workspace.CapabilitiesSummary}. Use the Tools, skills and MCP button to change them.",
-                "status" => StatusSummary(),
+                "status" => await StatusSummaryAsync(),
+                "remember" => await RememberCommandAsync(argument),
+                "memory" or "memories" => await MemoryCommandAsync(),
+                "forget" => await ForgetCommandAsync(argument),
+                "new" => NewChatCommandText(),
+                "chats" => await ChatsCommandAsync(),
+                "open" => await OpenCommandAsync(argument),
+                "rename" => await RenameCurrentAsync(argument),
+                "schedule" => ScheduleCommandText(),
+                "tasks" => await TasksCommandAsync(),
                 "reload" => await ReloadCommandAsync(),
                 "clear" => ClearCommand(),
                 _ => SlashHelp,
@@ -673,13 +718,43 @@ namespace NexusShell.App.ViewModels
                 : $"Could not attach {path}: it does not exist, is already attached, or the limit of {AgentWorkspaceViewModel.MaxAttachments} was reached.";
         }
 
-        private string StatusSummary()
+        private async Task<string> StatusSummaryAsync()
         {
             var options = Workspace.BuildOptions();
+            int memories = _memory is null ? 0 : (await _memory.ListAsync()).Count;
             return $"{AgentStatus}\n" +
                    $"Agent mode: {(UseAgent ? "on" : "off")}. Model: {Workspace.SelectedModel.Text}. Experts: {Workspace.SelectedExpert.Text}. " +
                    $"Permissions: {Workspace.SelectedPermission.Text}. Working folder: {options.WorkingDirectory ?? "none"}. " +
-                   $"{Workspace.CapabilitiesSummary}. {Workspace.AttachmentsSummary}.";
+                   $"{Workspace.CapabilitiesSummary}. {Workspace.AttachmentsSummary}. Long-term memory: {memories} saved facts.";
+        }
+
+        // ---------- Long-term memory commands ----------
+
+        private async Task<string> RememberCommandAsync(string text)
+        {
+            if (_memory is null) return "Long-term memory is not available.";
+            if (text.Length == 0) return "Write /remember followed by the fact, for example: /remember I use PowerShell 7 and prefer short answers.";
+            var result = await _memory.RememberAsync(new MemoryDraft(text, Evidence: "Typed with /remember"));
+            return result.Saved
+                ? $"{(result.Updated ? "Updated the memory" : "Remembered")} [{result.Entry!.Id}]: {result.Entry.Content}"
+                : result.Refusal!;
+        }
+
+        private async Task<string> MemoryCommandAsync()
+        {
+            if (_memory is null) return "Long-term memory is not available.";
+            var all = await _memory.ListAsync();
+            if (all.Count == 0) return "NexusAgent has no memories yet. Tell it \"remember that ...\" or type /remember followed by a fact.";
+            var lines = all.Take(10).Select(e => $"[{e.Id}] {(e.Pinned ? "(pinned) " : string.Empty)}{e.Content}");
+            return $"{all.Count} memories saved{(all.Count > 10 ? ", the 10 most recent" : string.Empty)}:\n" + string.Join("\n", lines) +
+                   "\nOpen the Memory window (Alt+Y) to search, edit or delete them.";
+        }
+
+        private async Task<string> ForgetCommandAsync(string id)
+        {
+            if (_memory is null) return "Long-term memory is not available.";
+            if (id.Length == 0) return "Write /forget followed by the memory id, for example /forget m3f9a2c. Type /memory to see the ids.";
+            return await _memory.ForgetAsync(id.Trim('[', ']', ' ')) ? $"Forgot memory {id}." : $"There is no memory {id}. Type /memory to see the ids.";
         }
 
         private async Task<string> ReloadCommandAsync()
@@ -694,26 +769,30 @@ namespace NexusShell.App.ViewModels
             return string.Empty;
         }
 
+        private string NewChatCommandText()
+        {
+            NewChat();
+            return string.Empty;
+        }
+
+        private string ScheduleCommandText()
+        {
+            if (_openSchedule is null) return "Scheduling is not available.";
+            OpenSchedule();
+            return string.Empty;
+        }
+
         /// <summary>Stops pending announcements and timers (called when the window closes).</summary>
         public void Shutdown()
         {
+            ChatHub.ChatsChanged -= OnChatsChanged;
             _sendCts?.Cancel();
             _workspaceDebounce?.Cancel();
             Workspace.OptionsChanged -= OnWorkspaceChanged;
             _steps.Dispose();
         }
 
-        private void ClearChat()
-        {
-            Messages.Clear();
-            if (_history.Count > 1)
-                _history.RemoveRange(1, _history.Count - 1);
-            _conversation = null;
-
-            var settings = _configManager.Load();
-            string msg = settings.AI.Language == "Arabic" ? "تم مسح المحادثة. كيف يمكنني مساعدتك؟" : "Chat cleared. How can I help you?";
-            AddAiMessage(msg);
-            Speak(msg);
-        }
+        /// <summary>"Clear" starts a new chat; the cleared one stays in Chat history.</summary>
+        private void ClearChat() => NewChat();
     }
 }

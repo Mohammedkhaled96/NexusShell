@@ -293,11 +293,41 @@ namespace NexusShell.App.Services
             var configManager = _serviceProvider.GetRequiredService<IConfigManager>();
             var agentService = _serviceProvider.GetService<NexusShell.Agents.Application.Conversations.INexusAgentService>();
             var loggerFactory = _serviceProvider.GetService<Microsoft.Extensions.Logging.ILoggerFactory>();
+            var memory = _serviceProvider.GetService<NexusShell.Agents.Application.Memory.IAgentMemory>();
+            var chats = _serviceProvider.GetService<NexusShell.Agents.Application.Chats.IChatLibrary>();
+            var scheduler = _serviceProvider.GetService<NexusShell.Agents.Application.Scheduling.IAgentScheduler>();
             var viewModel = new AIChatViewModel(aiService, configManager, initialContext, contextLabel, agentService, ShowAgentKeysWindow, loggerFactory,
-                agentService is null ? null : ShowAgentProvidersWindow);
+                agentService is null ? null : ShowAgentProvidersWindow,
+                memory,
+                memory is null ? null : ShowAgentMemoryWindow,
+                chats,
+                scheduler,
+                scheduler is null ? null : ShowAgentScheduleWindow);
             var window    = new AIChatWindow(viewModel, _serviceProvider.GetService<IScreenReaderAnnouncer>());
             VisualEffects.FadeInWindow(window);
             window.Show();
+        }
+
+        public void ShowAgentScheduleWindow(Action<string>? openChat = null)
+        {
+            PlaySound(AppSound.OpenManager);
+            var viewModel = _serviceProvider.GetRequiredService<AgentScheduleViewModel>();
+            viewModel.OpenChat = openChat;
+            var window = new AgentScheduleWindow(viewModel);
+            var owner = Application.Current?.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive);
+            if (owner != null && owner != window) window.Owner = owner;
+            window.ShowDialog();
+        }
+
+        public void ShowAgentMemoryWindow(string? workingFolder = null)
+        {
+            PlaySound(AppSound.OpenManager);
+            var viewModel = _serviceProvider.GetRequiredService<AgentMemoryViewModel>();
+            viewModel.WorkingFolder = workingFolder;
+            var window = new AgentMemoryWindow(viewModel);
+            var owner = Application.Current?.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive);
+            if (owner != null && owner != window) window.Owner = owner;
+            window.ShowDialog();
         }
 
         public void ShowAgentProvidersWindow()

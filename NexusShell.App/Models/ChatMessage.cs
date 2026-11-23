@@ -8,6 +8,9 @@ namespace NexusShell.App.Models
 
         public string SpeakerName { get; set; } = "";
 
+        /// <summary>When the message was written (saved with the chat).</summary>
+        public DateTimeOffset At { get; set; } = DateTimeOffset.Now;
+
         /// <summary>
         /// Screen-reader label that identifies the speaker.
         /// </summary>

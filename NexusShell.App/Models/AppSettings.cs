@@ -39,6 +39,9 @@ namespace NexusShell.App.Models
         public List<string> AgentDisabledSkills { get; set; } = new();
 
         public List<string> AgentDisabledMcpServers { get; set; } = new();
+
+        /// <summary>Folder where chats are saved (one sub-folder per chat). Empty = %AppData%\NexusShell\chats.</summary>
+        public string ChatsDirectory { get; set; } = "";
     }
 
     public class AliasConfig

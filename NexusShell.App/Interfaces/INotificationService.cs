@@ -16,5 +16,8 @@ namespace NexusShell.App.Interfaces
         /// checks (don't notify when the user is already watching).
         /// </summary>
         void NotifyCommandCompleted(string command, TimeSpan duration);
+
+        /// <summary>A scheduled agent task finished (or failed): title and the start of its result.</summary>
+        void NotifyScheduledTask(string title, string message);
     }
 }

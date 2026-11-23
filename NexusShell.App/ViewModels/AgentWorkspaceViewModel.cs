@@ -253,7 +253,8 @@ namespace NexusShell.App.ViewModels
                 Trim(Models);
                 foreach (var model in catalog.Models)
                 {
-                    string where = model.IsLocal ? $"{model.ProviderId}, local" : model.ProviderId;
+                    string context = model.ContextWindow > 0 ? $", {NexusShell.Agents.Domain.Models.ModelContextWindows.Describe(model.ContextWindow)} context" : string.Empty;
+                    string where = (model.IsLocal ? $"{model.ProviderId}, local" : model.ProviderId) + context;
                     string text = model.IsAvailable ? $"{model.ModelId} ({where})" : $"{model.ModelId} ({where}, unavailable)";
                     string spoken = model.IsAvailable ? $"{model.ModelId}, {where}" : $"{model.ModelId}, {where}, unavailable";
                     string help = model.IsAvailable ? "Available." : "Unavailable: " + model.Detail;

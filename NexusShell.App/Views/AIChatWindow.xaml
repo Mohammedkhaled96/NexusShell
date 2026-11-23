@@ -52,6 +52,22 @@
         </Style>
 
         <!-- Enter, Space or the arrow keys open the list first; Enter chooses, Escape keeps the old choice. -->
+        <!-- Actions on the current chat (also Shift+F10 on the chat history box). -->
+        <ContextMenu x:Key="ChatActionsMenu" x:Shared="False" AutomationProperties.Name="Chat actions">
+            <MenuItem Header="_New chat" InputGestureText="Ctrl+N" Click="NewChat_Click"/>
+            <MenuItem Header="_Rename this chat..." InputGestureText="F2" Click="RenameChat_Click"/>
+            <MenuItem Header="_Pin or unpin this chat" Click="PinChat_Click"/>
+            <MenuItem Header="_Duplicate this chat" Click="DuplicateChat_Click"/>
+            <MenuItem Header="E_xport this chat as text..." Click="ExportChat_Click"/>
+            <MenuItem Header="Open this chat's _folder" Click="OpenChatFolder_Click"/>
+            <MenuItem Header="De_lete this chat..." Click="DeleteChat_Click"/>
+            <Separator/>
+            <MenuItem Header="_Open the chats folder" Click="OpenChatsFolder_Click"/>
+            <MenuItem Header="_Change where chats are saved..." Click="MoveChats_Click"/>
+            <Separator/>
+            <MenuItem Header="_Scheduled tasks..." Click="Schedule_Click"/>
+        </ContextMenu>
+
         <Style x:Key="WorkspaceCombo" TargetType="ComboBox">
             <Setter Property="helpers:ComboBoxKeyboard.BrowseBeforeChoosing" Value="True"/>
             <Setter Property="ToolTipService.ShowsToolTipOnKeyboardFocus" Value="False"/>
@@ -99,8 +115,45 @@
                        AutomationProperties.Name="{Binding AgentStatus}" />
         </Grid>
 
+        <StackPanel Grid.Row="1">
+        <!-- Saved chats: every chat is saved on this device; reopen one to continue it -->
+        <Grid Margin="0,0,0,8" Visibility="{Binding ChatsAvailable, Converter={StaticResource BoolToVis}}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Label Grid.Column="0" Content="Chat hist_ory:" Target="{Binding ElementName=ChatHistoryCombo}" Style="{StaticResource WorkspaceLabel}"/>
+            <ComboBox x:Name="ChatHistoryCombo" Grid.Column="1" MinHeight="28" MaxDropDownHeight="480"
+                      ItemsSource="{Binding ChatHistory}"
+                      SelectedItem="{Binding SelectedChat}"
+                      DisplayMemberPath="Text"
+                      helpers:ComboBoxKeyboard.BrowseBeforeChoosing="True"
+                      ToolTipService.ShowsToolTipOnKeyboardFocus="False"
+                      ContextMenu="{StaticResource ChatActionsMenu}"
+                      AutomationProperties.Name="Chat history"
+                      AutomationProperties.HelpText="Every chat is saved on this computer. Press Enter or Down arrow to open the list, choose a chat with Enter to continue it. Shift+F10 or the Applications key shows chat actions.">
+                <ComboBox.ItemContainerStyle>
+                    <Style TargetType="ComboBoxItem">
+                        <Setter Property="AutomationProperties.Name" Value="{Binding AutomationName}"/>
+                        <Setter Property="AutomationProperties.HelpText" Value="{Binding HelpText}"/>
+                        <Setter Property="ToolTip" Value="{Binding HelpText}"/>
+                        <Setter Property="ToolTipService.ShowsToolTipOnKeyboardFocus" Value="False"/>
+                    </Style>
+                </ComboBox.ItemContainerStyle>
+            </ComboBox>
+            <Button x:Name="ChatActionsButton" Grid.Column="2" Content="_Chat actions..." Click="ChatActions_Click" Style="{StaticResource WorkspaceButton}" Margin="8,0,0,0"
+                    ContextMenu="{StaticResource ChatActionsMenu}"
+                    AutomationProperties.Name="Chat actions"
+                    AutomationProperties.HelpText="New chat, rename, pin, duplicate, export, open folder, delete, change the chats folder, scheduled tasks." />
+            <Button Grid.Column="3" Content="Sch_edule..." Command="{Binding OpenScheduleCommand}" Style="{StaticResource WorkspaceButton}" Margin="0,0,0,0"
+                    AutomationProperties.Name="Scheduled tasks"
+                    AutomationProperties.HelpText="Let NexusAgent do a task at a set time, once or repeatedly; each result is saved as a chat." />
+        </Grid>
+
         <!-- Agent workspace -->
-        <Border Grid.Row="1" Background="#1A1A1A" BorderBrush="#333" BorderThickness="1" CornerRadius="4" Padding="10,8,10,2" Margin="0,0,0,10"
+        <Border Background="#1A1A1A" BorderBrush="#333" BorderThickness="1" CornerRadius="4" Padding="10,8,10,2" Margin="0,0,0,10"
                 IsEnabled="{Binding UseAgent}"
                 AutomationProperties.Name="Agent workspace">
             <StackPanel>
@@ -172,6 +225,9 @@
                     <Button Content="P_roviders and models..." Command="{Binding ManageProvidersCommand}" Style="{StaticResource WorkspaceButton}"
                             AutomationProperties.Name="Providers and models"
                             AutomationProperties.HelpText="Add online providers or local model servers, find their models and set their keys." />
+                    <Button Content="Memor_y..." Command="{Binding OpenMemoryCommand}" Style="{StaticResource WorkspaceButton}"
+                            AutomationProperties.Name="Long-term memory"
+                            AutomationProperties.HelpText="Review, add, correct, pin or delete what NexusAgent remembers between conversations." />
                     <Button Content="Refres_h" Command="{Binding RefreshAgentCommand}" Style="{StaticResource WorkspaceButton}"
                             AutomationProperties.Name="Refresh models and status"
                             AutomationProperties.HelpText="Checks again which providers and local models are available." />
@@ -209,6 +265,7 @@
                 </Grid>
             </StackPanel>
         </Border>
+        </StackPanel>
 
         <!-- Chat Experience Area -->
         <Border Grid.Row="2" Background="#121212" BorderBrush="#333" BorderThickness="1">
@@ -279,10 +336,11 @@
                         Command="{Binding ManageAgentKeysCommand}"
                         Background="Transparent" Foreground="#BBBBBB" BorderThickness="0" Margin="0,0,25,0" Cursor="Hand"
                         AutomationProperties.Name="Manage NexusAgent API keys and tokens" />
-                <Button Content="Clear Chat"
-                        Command="{Binding ClearChatCommand}"
+                <Button Content="_New chat"
+                        Command="{Binding NewChatCommand}"
                         Background="Transparent" Foreground="#BBBBBB" BorderThickness="0" Margin="0,0,25,0" Cursor="Hand"
-                        AutomationProperties.Name="Clear conversation history" />
+                        AutomationProperties.Name="New chat"
+                        AutomationProperties.HelpText="Starts a new conversation (Ctrl+N). This chat stays saved in Chat history." />
                 <Button Content="Close Chat"
                         Click="CloseButton_Click"
                         Background="Transparent" Foreground="#BBBBBB" BorderThickness="0" Cursor="Hand"

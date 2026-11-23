@@ -45,6 +45,22 @@ namespace NexusShell.App.Services
             }
         }
 
+        public void NotifyScheduledTask(string title, string message)
+        {
+            try
+            {
+                new ToastContentBuilder()
+                    .AddText(Truncate(title, 80))
+                    .AddText(Truncate(message, 180))
+                    .AddArgument("action", "openChat")
+                    .Show();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not show the scheduled task notification.");
+            }
+        }
+
         private static string Truncate(string s, int max) =>
             string.IsNullOrEmpty(s) ? string.Empty :
             s.Length <= max ? s : s.Substring(0, max) + "…";

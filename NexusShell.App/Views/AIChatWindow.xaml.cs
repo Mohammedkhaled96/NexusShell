@@ -352,10 +352,137 @@ namespace NexusShell.App.Views
         /// <summary>Ctrl+O attaches files, Ctrl+Shift+O attaches a folder (agent mode only).</summary>
         private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
         {
+            // Ctrl+N new chat, F2 rename this chat.
+            if (e.Key == Key.N && Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                e.Handled = true;
+                _viewModel.NewChat();
+                MessageInput.Focus();
+                return;
+            }
+            if (e.Key == Key.F2 && Keyboard.Modifiers == ModifierKeys.None && _viewModel.ChatsAvailable)
+            {
+                e.Handled = true;
+                RenameChat();
+                return;
+            }
+
             if (e.Key != Key.O || !Keyboard.Modifiers.HasFlag(ModifierKeys.Control) || !_viewModel.UseAgent) return;
             e.Handled = true;
             if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) AttachFolders();
             else AttachFiles();
+        }
+
+        // ---------- Chat actions ----------
+
+        private void ChatActions_Click(object sender, RoutedEventArgs e)
+        {
+            if (ChatActionsButton.ContextMenu is not { } menu) return;
+            menu.PlacementTarget = ChatActionsButton;
+            menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            menu.IsOpen = true;
+        }
+
+        private void NewChat_Click(object sender, RoutedEventArgs e)
+        {
+            _viewModel.NewChat();
+            MessageInput.Focus();
+        }
+
+        private void RenameChat_Click(object sender, RoutedEventArgs e) => RenameChat();
+
+        private async void RenameChat()
+        {
+            string? title = TextInputDialog.Ask(this, "Rename chat", "New _name for this chat:", _viewModel.CurrentChatTitle);
+            if (title is null) return;
+            _viewModel.Announce(await _viewModel.RenameCurrentAsync(title));
+        }
+
+        private async void PinChat_Click(object sender, RoutedEventArgs e) => _viewModel.Announce(await _viewModel.TogglePinCurrentAsync());
+
+        private async void DuplicateChat_Click(object sender, RoutedEventArgs e) => _viewModel.Announce(await _viewModel.DuplicateCurrentAsync());
+
+        private async void ExportChat_Click(object sender, RoutedEventArgs e)
+        {
+            if (!_viewModel.HasSavedChat)
+            {
+                _viewModel.Announce("Send a message first: this chat is not saved yet.");
+                return;
+            }
+            var dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Export chat as text",
+                FileName = SafeFileName(_viewModel.CurrentChatTitle) + ".txt",
+                Filter = "Text file|*.txt|Markdown|*.md|All files|*.*",
+            };
+            if (dialog.ShowDialog(this) != true) return;
+            _viewModel.Announce(await _viewModel.ExportCurrentAsync(dialog.FileName));
+        }
+
+        private void OpenChatFolder_Click(object sender, RoutedEventArgs e)
+        {
+            if (_viewModel.CurrentChatFolder is not { } folder || !System.IO.Directory.Exists(folder))
+            {
+                _viewModel.Announce("This chat is not saved yet.");
+                return;
+            }
+            OpenInExplorer(folder);
+        }
+
+        private void OpenChatsFolder_Click(object sender, RoutedEventArgs e)
+        {
+            System.IO.Directory.CreateDirectory(_viewModel.ChatsFolder);
+            OpenInExplorer(_viewModel.ChatsFolder);
+        }
+
+        private async void DeleteChat_Click(object sender, RoutedEventArgs e)
+        {
+            if (!_viewModel.HasSavedChat)
+            {
+                _viewModel.Announce("This chat is not saved, so there is nothing to delete.");
+                return;
+            }
+            var answer = MessageBox.Show(this,
+                $"Delete the chat \"{_viewModel.CurrentChatTitle}\"? It goes to the Recycle Bin, so you can restore it from there.",
+                "Delete chat", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+            if (answer != MessageBoxResult.Yes) return;
+            _viewModel.Announce(await _viewModel.DeleteCurrentAsync());
+            MessageInput.Focus();
+        }
+
+        private async void MoveChats_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new Microsoft.Win32.OpenFolderDialog
+            {
+                Title = "Choose where NexusShell saves chats (existing chats are moved there)",
+                InitialDirectory = _viewModel.ChatsFolder,
+            };
+            if (dialog.ShowDialog(this) != true) return;
+            _viewModel.Announce(await _viewModel.MoveChatsAsync(dialog.FolderName));
+        }
+
+        private void Schedule_Click(object sender, RoutedEventArgs e)
+        {
+            if (_viewModel.OpenScheduleCommand.CanExecute(null)) _viewModel.OpenScheduleCommand.Execute(null);
+        }
+
+        private static void OpenInExplorer(string folder)
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe") { ArgumentList = { folder }, UseShellExecute = false });
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Warning(ex, "Could not open {Folder}.", folder);
+            }
+        }
+
+        private static string SafeFileName(string title)
+        {
+            var invalid = System.IO.Path.GetInvalidFileNameChars();
+            string name = new string(title.Select(c => invalid.Contains(c) ? '-' : c).ToArray()).Trim();
+            return name.Length == 0 ? "chat" : name.Length > 80 ? name[..80] : name;
         }
     }
 }
