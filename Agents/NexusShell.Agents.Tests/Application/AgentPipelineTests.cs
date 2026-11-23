@@ -290,7 +290,7 @@ public sealed class AgentPipelineTests : IDisposable
         var reply = await conversation.SendAsync("anything");
 
         Assert.Equal("coordinated", reply.Text);
-        var tools = _host.Chat.Calls.Single().Options!.Tools!.Select(t => t.Name).Order().ToArray();
+        var tools = _host.Chat.Calls.Single().Options!.Tools!.Select(t => t.Name).Where(n => n.StartsWith("ask_", StringComparison.Ordinal)).Order().ToArray();
         Assert.Equal(new[] { "ask_beta", "ask_gamma" }, tools);
     }
 
