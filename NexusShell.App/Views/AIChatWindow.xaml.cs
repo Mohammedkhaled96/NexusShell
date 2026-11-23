@@ -352,6 +352,14 @@ namespace NexusShell.App.Views
         /// <summary>Ctrl+O attaches files, Ctrl+Shift+O attaches a folder (agent mode only).</summary>
         private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
         {
+            // Alt+G connectors (agent mode).
+            if (e.Key == Key.System && e.SystemKey == Key.G && _viewModel.UseAgent)
+            {
+                e.Handled = true;
+                if (_viewModel.OpenConnectorsCommand.CanExecute(null)) _viewModel.OpenConnectorsCommand.Execute(null);
+                return;
+            }
+
             // Ctrl+N new chat, F2 rename this chat.
             if (e.Key == Key.N && Keyboard.Modifiers == ModifierKeys.Control)
             {

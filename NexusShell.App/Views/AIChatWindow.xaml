@@ -225,6 +225,11 @@
                     <Button Content="P_roviders and models..." Command="{Binding ManageProvidersCommand}" Style="{StaticResource WorkspaceButton}"
                             AutomationProperties.Name="Providers and models"
                             AutomationProperties.HelpText="Add online providers or local model servers, find their models and set their keys." />
+                    <Button x:Name="ConnectorsButton" Content="Connectors..." Command="{Binding OpenConnectorsCommand}" Style="{StaticResource WorkspaceButton}"
+                            ToolTip="Connectors (Alt+G)"
+                            AutomationProperties.Name="Connectors"
+                            AutomationProperties.AccessKey="Alt+G"
+                            AutomationProperties.HelpText="Connect Gmail, Google Calendar, Outlook, GitHub, Notion, Jira, Slack and more. Shortcut Alt+G." />
                     <Button Content="Memor_y..." Command="{Binding OpenMemoryCommand}" Style="{StaticResource WorkspaceButton}"
                             AutomationProperties.Name="Long-term memory"
                             AutomationProperties.HelpText="Review, add, correct, pin or delete what NexusAgent remembers between conversations." />

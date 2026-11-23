@@ -23,6 +23,7 @@ namespace NexusShell.App.Interfaces
         void ShowAgentProvidersWindow();
         void ShowAgentMemoryWindow(string? workingFolder = null);
         void ShowAgentScheduleWindow(Action<string>? openChat = null);
+        void ShowAgentConnectorsWindow();
         void ShowApiTesterWindow();
         Shortcut? ShowAddEditShortcutWindow(List<string> availableCommands, Shortcut? shortcut = null);
         EnvVariable? ShowAddEditEnvWindow(EnvVariable? variable = null);

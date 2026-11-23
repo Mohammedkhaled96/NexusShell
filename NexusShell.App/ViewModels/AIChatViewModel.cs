@@ -32,6 +32,8 @@ namespace NexusShell.App.ViewModels
         private readonly Action? _openProviders;
         private readonly IAgentMemory? _memory;
         private readonly Action<string?>? _openMemory;
+        private readonly NexusShell.Agents.Application.Connectors.IConnectorService? _connectorService;
+        private readonly Action? _openConnectors;
         private readonly string _initialContext;
         private readonly List<Dictionary<string, string>> _history;
 
@@ -128,6 +130,7 @@ namespace NexusShell.App.ViewModels
         public ICommand ManageAgentKeysCommand { get; }
         public ICommand ManageProvidersCommand { get; }
         public ICommand OpenMemoryCommand { get; }
+        public ICommand OpenConnectorsCommand { get; }
         public ICommand RefreshAgentCommand { get; }
         public ICommand ClearWorkingFolderCommand { get; }
         public ICommand RemoveAttachmentCommand { get; }
@@ -150,7 +153,9 @@ namespace NexusShell.App.ViewModels
             Action<string?>? openMemory = null,
             NexusShell.Agents.Application.Chats.IChatLibrary? chats = null,
             NexusShell.Agents.Application.Scheduling.IAgentScheduler? scheduler = null,
-            Action<Action<string>?>? openSchedule = null)
+            Action<Action<string>?>? openSchedule = null,
+            NexusShell.Agents.Application.Connectors.IConnectorService? connectors = null,
+            Action? openConnectors = null)
         {
             _aiService = aiService;
             _configManager = configManager;
@@ -159,6 +164,8 @@ namespace NexusShell.App.ViewModels
             _openProviders = openProviders;
             _memory = memory;
             _openMemory = openMemory;
+            _connectorService = connectors;
+            _openConnectors = openConnectors;
             _initialContext = initialContext ?? string.Empty;
 
             var settings = _configManager.Load();
@@ -233,6 +240,14 @@ namespace NexusShell.App.ViewModels
                     await ReloadAgentAsync();
                 },
                 _ => _openProviders != null);
+
+            OpenConnectorsCommand = new RelayCommand(
+                async _ =>
+                {
+                    _openConnectors?.Invoke();
+                    await ReloadAgentAsync(); // new connections give the agent their tools
+                },
+                _ => _openConnectors != null);
 
             OpenMemoryCommand = new RelayCommand(
                 _ => _openMemory?.Invoke(Workspace.WorkingDirectory),
@@ -339,6 +354,7 @@ namespace NexusShell.App.ViewModels
                 {
                     int facts = _memory is null ? 0 : (await _memory.ListAsync()).Count;
                     AgentStatus += $" Memory on ({facts} saved facts); context sized to each model; chats saved automatically.";
+                    if (_connectorService is not null) AgentStatus += " " + AgentConnectorsViewModel.Describe(_connectorService);
                 }
 
                 if (!_userChoseMode || !IsAgentAvailable)
@@ -595,6 +611,7 @@ namespace NexusShell.App.ViewModels
             "/remember TEXT  saves a fact to NexusAgent's long-term memory. /memory lists what it remembers. /forget ID deletes one memory.\n" +
             "/new  starts a new chat. /chats lists saved chats. /open NUMBER or TITLE reopens one to continue it. /rename TITLE renames this chat.\n" +
             "/schedule  opens scheduled tasks. /tasks lists them. You can also ask: every weekday at 9 check free disk space.\n" +
+            "/connectors  opens Connectors (Gmail, Google Calendar, Outlook, GitHub, Notion, Jira, Slack ...) and says which apps are connected.\n" +
             "/status  says the agent status and current choices.\n" +
             "/reload  reloads providers, models and MCP servers.\n" +
             "/clear  clears the conversation.";
@@ -603,7 +620,7 @@ namespace NexusShell.App.ViewModels
         {
             "help", "?", "model", "models", "expert", "experts", "mode", "permissions", "folder", "cd", "attach", "tools", "status", "reload", "clear",
             "remember", "memory", "memories", "forget",
-            "new", "chats", "open", "rename", "schedule", "tasks",
+            "new", "chats", "open", "rename", "schedule", "tasks", "connectors", "connect",
         };
 
         private async Task<bool> TryRunSlashCommandAsync(string message)
@@ -639,6 +656,7 @@ namespace NexusShell.App.ViewModels
                 "rename" => await RenameCurrentAsync(argument),
                 "schedule" => ScheduleCommandText(),
                 "tasks" => await TasksCommandAsync(),
+                "connectors" or "connect" => ConnectorsCommandText(),
                 "reload" => await ReloadCommandAsync(),
                 "clear" => ClearCommand(),
                 _ => SlashHelp,
@@ -773,6 +791,14 @@ namespace NexusShell.App.ViewModels
         {
             NewChat();
             return string.Empty;
+        }
+
+        private string ConnectorsCommandText()
+        {
+            if (_connectorService is null || _openConnectors is null) return "Connectors are not available.";
+            string text = AgentConnectorsViewModel.Describe(_connectorService);
+            if (OpenConnectorsCommand.CanExecute(null)) OpenConnectorsCommand.Execute(null);
+            return text + " Opening Connectors.";
         }
 
         private string ScheduleCommandText()

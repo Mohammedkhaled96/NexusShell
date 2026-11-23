@@ -1,0 +1,183 @@
+<Window x:Class="NexusShell.App.Views.AgentConnectorsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:viewModels="clr-namespace:NexusShell.App.ViewModels"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance Type=viewModels:AgentConnectorsViewModel, IsDesignTimeCreatable=False}"
+        Title="NexusAgent connectors" Height="780" Width="1060"
+        Background="#1E1E1E" Foreground="#E0E0E0"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize" MinWidth="680" MinHeight="560"
+        AutomationProperties.Name="NexusAgent connectors">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <Style x:Key="FormButton" TargetType="Button">
+            <Setter Property="Background" Value="#3C3C3C"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="MinWidth" Value="110"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Margin" Value="0,0,8,8"/>
+            <Setter Property="Padding" Value="10,0"/>
+        </Style>
+        <Style x:Key="Heading" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#E0E0E0"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,10,0,4"/>
+        </Style>
+        <Style x:Key="ReadOnlyText" TargetType="TextBox">
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Background" Value="#252526"/>
+            <Setter Property="Foreground" Value="#E0E0E0"/>
+            <Setter Property="BorderBrush" Value="#444"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="340"/>
+            <ColumnDefinition Width="20"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <TextBlock Grid.Row="0" Grid.ColumnSpan="3" TextWrapping="Wrap" Margin="0,0,0,12" Foreground="#CCCCCC" FontSize="13"
+                   Text="Connect NexusAgent to your apps so you can ask, for example: summarize my unread mail, what is on my calendar tomorrow, or list the open issues in my repository. Reading is free; sending, creating and deleting always ask you first, and scheduled tasks can never send."/>
+
+        <DockPanel Grid.Row="1" Grid.Column="0">
+            <Label DockPanel.Dock="Top" Content="_Connectors:" Target="{Binding ElementName=ConnectorList}" Foreground="#CCCCCC" Padding="0,0,0,4"/>
+            <ListBox x:Name="ConnectorList" ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}" DisplayMemberPath="Text"
+                     Background="#252526" Foreground="#E0E0E0" BorderBrush="#444"
+                     AutomationProperties.Name="{Binding Summary}"
+                     AutomationProperties.HelpText="Built-in connectors first, then more apps through MCP. The details of the selected one appear on the right.">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="AutomationProperties.Name" Value="{Binding AutomationName}"/>
+                        <Setter Property="Padding" Value="6,5"/>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+            </ListBox>
+        </DockPanel>
+
+        <ScrollViewer Grid.Row="1" Grid.Column="2" VerticalScrollBarVisibility="Auto" Focusable="False">
+            <StackPanel DataContext="{Binding Selected}" Visibility="{Binding DataContext.HasSelection, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding StateText}" Foreground="#4FC3F7" Margin="0,2,0,6"/>
+                <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Foreground="#CCCCCC"/>
+
+                <TextBlock Text="What the agent can do" Style="{StaticResource Heading}"/>
+                <TextBox Text="{Binding Abilities, Mode=OneWay}" Style="{StaticResource ReadOnlyText}" AutomationProperties.Name="What the agent can do"/>
+
+                <TextBlock Text="How to set it up" Style="{StaticResource Heading}"/>
+                <TextBox Text="{Binding Steps, Mode=OneWay}" Style="{StaticResource ReadOnlyText}" AutomationProperties.Name="Setup steps"
+                         AutomationProperties.HelpText="Read the steps line by line with the arrow keys."/>
+                <TextBlock Text="{Binding Note}" TextWrapping="Wrap" Foreground="#E0B060" Margin="0,0,0,6"
+                           Visibility="{Binding HasNote, Converter={StaticResource BoolToVis}}"/>
+                <Button Content="_Open setup page" Click="OpenSetup_Click" Style="{StaticResource FormButton}" HorizontalAlignment="Left"
+                        Visibility="{Binding HasSingleSetupPage, Converter={StaticResource BoolToVis}}"
+                        AutomationProperties.Name="Open the setup page in your browser"/>
+                <ItemsControl ItemsSource="{Binding SetupLinks}" IsTabStop="False"
+                              Visibility="{Binding HasSetupLinks, Converter={StaticResource BoolToVis}}"
+                              AutomationProperties.Name="Setup pages">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Click="OpenLink_Click" Tag="{Binding Url}" Style="{StaticResource FormButton}"
+                                    AutomationProperties.Name="{Binding Label, StringFormat='{}{0}, opens in your browser'}">
+                                <TextBlock Text="{Binding Label}"/>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Text="Settings (saved in your Windows user environment)" Style="{StaticResource Heading}"/>
+                <ItemsControl ItemsSource="{Binding Fields}" IsTabStop="False">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Text="{Binding Label}" Foreground="#CCCCCC"/>
+                                <TextBox Grid.Row="1" Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
+                                         Visibility="{Binding IsPlain, Converter={StaticResource BoolToVis}}"
+                                         Background="#2D2D2D" Foreground="White" CaretBrush="White" BorderBrush="#555" Padding="6,4"
+                                         AutomationProperties.Name="{Binding AutomationName}" AutomationProperties.HelpText="{Binding Help}"/>
+                                <PasswordBox Grid.Row="1"
+                                             Visibility="{Binding IsSecret, Converter={StaticResource BoolToVis}}"
+                                             Background="#2D2D2D" Foreground="White" CaretBrush="White" BorderBrush="#555" Padding="6,4"
+                                             AutomationProperties.Name="{Binding AutomationName}" AutomationProperties.HelpText="{Binding Help}"/>
+                                <Button Grid.Row="1" Grid.Column="1" Content="Save" Click="SaveField_Click" Tag="{Binding}" MinWidth="80" Height="30" Margin="8,0,0,0"
+                                        Background="#3C3C3C" Foreground="White" BorderThickness="0"
+                                        AutomationProperties.Name="{Binding Label, StringFormat='Save {0}'}"/>
+                                <TextBlock Grid.Row="2" Text="{Binding StateText}" Foreground="#AAAAAA" FontSize="12" Margin="0,2,0,0"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <WrapPanel Margin="0,8,0,0">
+                    <Button Click="Connect_Click" Style="{StaticResource FormButton}" Background="#007ACC" FontWeight="SemiBold"
+                            Visibility="{Binding IsNative, Converter={StaticResource BoolToVis}}"
+                            IsEnabled="{Binding DataContext.IsIdle, RelativeSource={RelativeSource AncestorType=Window}}"
+                            AutomationProperties.Name="{Binding ConnectName}">
+                        <AccessText Text="{Binding ConnectLabel}"/>
+                    </Button>
+                    <Button Content="Import client _file..." Click="ImportClientFile_Click" Style="{StaticResource FormButton}"
+                            Visibility="{Binding SupportsClientFile, Converter={StaticResource BoolToVis}}"
+                            IsEnabled="{Binding DataContext.IsIdle, RelativeSource={RelativeSource AncestorType=Window}}"
+                            AutomationProperties.Name="Import the client file you downloaded from Google, then sign in"
+                            AutomationProperties.HelpText="Choose the client_secret file from Downloads. NexusShell reads the client id and secret from it, so there is nothing to type."/>
+                    <Button Content="_Test connection" Click="Test_Click" Style="{StaticResource FormButton}"
+                            Visibility="{Binding IsNative, Converter={StaticResource BoolToVis}}"
+                            IsEnabled="{Binding IsConnected}"
+                            AutomationProperties.Name="Test the connection"/>
+                    <Button Content="_Disconnect" Click="Disconnect_Click" Style="{StaticResource FormButton}"
+                            Visibility="{Binding IsNative, Converter={StaticResource BoolToVis}}"
+                            IsEnabled="{Binding IsConnected}"
+                            AutomationProperties.Name="Disconnect"/>
+                    <Button Content="_Add to NexusAgent" Click="AddMcp_Click" Style="{StaticResource FormButton}" Background="#007ACC" FontWeight="SemiBold"
+                            Visibility="{Binding IsMcp, Converter={StaticResource BoolToVis}}"
+                            AutomationProperties.Name="Add to NexusAgent"/>
+                    <Button Content="_Remove" Click="RemoveMcp_Click" Style="{StaticResource FormButton}"
+                            Visibility="{Binding IsMcp, Converter={StaticResource BoolToVis}}"
+                            IsEnabled="{Binding Added}"
+                            AutomationProperties.Name="Remove from NexusAgent"/>
+                </WrapPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Grid Grid.Row="2" Grid.ColumnSpan="3" Margin="0,12,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock TextWrapping="Wrap" Foreground="#4FC3F7" VerticalAlignment="Center"
+                       Text="{Binding StatusMessage}"
+                       AutomationProperties.LiveSetting="Polite"
+                       AutomationProperties.Name="{Binding StatusMessage}"/>
+            <Button Grid.Column="1" Content="Close" IsCancel="True" Click="Close_Click" Style="{StaticResource FormButton}" Margin="12,0,0,0"
+                    AutomationProperties.Name="Close connectors"/>
+        </Grid>
+    </Grid>
+</Window>
