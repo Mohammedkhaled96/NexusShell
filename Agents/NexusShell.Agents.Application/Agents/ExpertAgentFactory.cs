@@ -60,7 +60,8 @@ internal sealed class ExpertAgentFactory(
     IServiceProvider services,
     IModelHealthRegistry modelHealth,
     IAgentMemory memory,
-    ConversationSummarizer summarizer) : IExpertAgentFactory
+    ConversationSummarizer summarizer,
+    Connectors.IConnectorService connectors) : IExpertAgentFactory
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<ExpertAgentFactory>();
 
@@ -108,9 +109,21 @@ internal sealed class ExpertAgentFactory(
         foreach (var descriptor in toolCatalog.Resolve([Scheduling.ScheduleToolProvider.CategoryName]))
             AddTool(descriptor);
 
-        if (expert.McpServers.Count > 0)
+        // MCP servers the expert lists, plus connector servers shared with every expert.
+        var mcpSelectors = expert.McpServers
+            .Concat(configuration.McpServers.Where(s => s.Enabled && s.ShareWithAllExperts).Select(s => s.Name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (mcpSelectors.Count > 0)
         {
-            foreach (var descriptor in await mcpToolProvider.GetToolsAsync(expert.McpServers, cancellationToken).ConfigureAwait(false))
+            foreach (var descriptor in await mcpToolProvider.GetToolsAsync(mcpSelectors, cancellationToken).ConfigureAwait(false))
+                AddTool(descriptor);
+        }
+
+        // Connected apps (Gmail, Calendar, Outlook, GitHub ...): reading is free, sending and changing ask first.
+        foreach (string category in connectors.ActiveToolCategories())
+        {
+            foreach (var descriptor in toolCatalog.Resolve([category]))
                 AddTool(descriptor);
         }
 

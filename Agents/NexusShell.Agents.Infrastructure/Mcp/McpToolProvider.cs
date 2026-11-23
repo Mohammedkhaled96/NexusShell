@@ -72,6 +72,21 @@ internal sealed class McpToolProvider(
         return statuses;
     }
 
+    /// <summary>
+    /// On Windows, launchers such as npx are .cmd scripts that cannot be started directly:
+    /// anything that is not an .exe runs through cmd.exe /c.
+    /// </summary>
+    internal static string LaunchCommand(string command) =>
+        NeedsShell(command) ? "cmd.exe" : command;
+
+    internal static IList<string> LaunchArguments(string command, IList<string> arguments) =>
+        NeedsShell(command) ? ["/c", command, .. arguments] : arguments;
+
+    private static bool NeedsShell(string command) =>
+        OperatingSystem.IsWindows()
+        && !command.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+        && !command.Equals("cmd", StringComparison.OrdinalIgnoreCase);
+
     public async ValueTask DisposeAsync()
     {
         foreach (var (_, entry) in _connections)
@@ -158,8 +173,8 @@ internal sealed class McpToolProvider(
                 : new StdioClientTransport(new StdioClientTransportOptions
                 {
                     Name = server.Name,
-                    Command = server.Command!,
-                    Arguments = arguments,
+                    Command = LaunchCommand(server.Command!),
+                    Arguments = LaunchArguments(server.Command!, arguments),
                     WorkingDirectory = string.IsNullOrWhiteSpace(server.WorkingDirectory) ? null : server.WorkingDirectory,
                     EnvironmentVariables = environment!,
                     ShutdownTimeout = TimeSpan.FromSeconds(5),

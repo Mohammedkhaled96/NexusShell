@@ -13,6 +13,10 @@ using NexusShell.Agents.Application.Abstractions.Skills;
 using NexusShell.Agents.Application.Abstractions.Tools;
 using NexusShell.Agents.Infrastructure.Attachments;
 using NexusShell.Agents.Infrastructure.Chats;
+using NexusShell.Agents.Infrastructure.Connectors;
+using NexusShell.Agents.Infrastructure.Connectors.GitHub;
+using NexusShell.Agents.Infrastructure.Connectors.Google;
+using NexusShell.Agents.Infrastructure.Connectors.Microsoft;
 using NexusShell.Agents.Infrastructure.Configuration;
 using NexusShell.Agents.Infrastructure.Mcp;
 using NexusShell.Agents.Infrastructure.Memory;
@@ -59,6 +63,11 @@ public static class DependencyInjection
             .AddHttpMessageHandler<ThoughtSignatureHandler>();
         services.AddHttpClient(HttpClientNames.Probe, c => c.Timeout = TimeSpan.FromSeconds(2));
         services.AddHttpClient(HttpClientNames.Discovery, c => c.Timeout = TimeSpan.FromSeconds(8));
+        services.AddHttpClient(HttpClientNames.Connectors, c =>
+        {
+            c.Timeout = TimeSpan.FromSeconds(60);
+            c.DefaultRequestHeaders.UserAgent.ParseAdd("NexusShell-Agent/1.0");
+        });
         services.AddHttpClient(HttpClientNames.WebTool, c =>
             {
                 c.Timeout = TimeSpan.FromSeconds(30);
@@ -86,6 +95,20 @@ public static class DependencyInjection
         services.TryAddSingleton(new ChatStorageOptions());
         services.TryAddSingleton<IChatStore, JsonChatStore>();
         services.TryAddSingleton<IScheduledTaskStore, JsonScheduledTaskStore>();
+
+        // Connectors: Google (Gmail, Calendar), Microsoft (Outlook), GitHub, and MCP templates
+        services.TryAddSingleton<IBrowserLauncher, SystemBrowserLauncher>();
+        services.TryAddSingleton<GoogleAccount>();
+        services.TryAddSingleton<MicrosoftAccount>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<Application.Connectors.IConnector, GoogleConnector>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<Application.Connectors.IConnector, MicrosoftConnector>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<Application.Connectors.IConnector, GitHubConnector>());
+        services.AddAgentToolProvider<GmailToolProvider>();
+        services.AddAgentToolProvider<GoogleCalendarToolProvider>();
+        services.AddAgentToolProvider<OutlookMailToolProvider>();
+        services.AddAgentToolProvider<OutlookCalendarToolProvider>();
+        services.AddAgentToolProvider<GitHubToolProvider>();
+        services.TryAddSingleton<Application.Connectors.IMcpSettingsStore, UserMcpSettingsStore>();
 
         // Files and folders the user attaches to a message
         services.TryAddSingleton<IAttachmentReader, FileAttachmentReader>();

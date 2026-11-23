@@ -11,6 +11,9 @@ internal static class HttpClientNames
     /// <summary>Model lists (Ollama /api/tags, OpenAI-compatible /models).</summary>
     public const string Discovery = "nexus-agents-discovery";
 
+    /// <summary>Connected applications (Gmail, Calendar, Outlook, GitHub) and their sign-in endpoints.</summary>
+    public const string Connectors = "nexus-agents-connectors";
+
     /// <summary>The fetch_url tool (no automatic redirects: every hop is re-validated).</summary>
     public const string WebTool = "nexus-agents-web";
 }

@@ -131,6 +131,13 @@ public static class AgentProgressNarrator
             case "cancel_scheduled_task": return ("cancelling a scheduled task", "cancel a scheduled task", "إلغاء مهمة مجدولة");
         }
 
+        // Connected applications.
+        foreach (var (prefix, english, arabic) in ConnectorNames)
+        {
+            if (name.StartsWith(prefix, StringComparison.Ordinal))
+                return ($"working with {english}", $"use {english}", $"العمل مع {arabic}");
+        }
+
         if (name.StartsWith("ask_", StringComparison.Ordinal))
         {
             string expert = Words(name[4..]);
@@ -146,6 +153,14 @@ public static class AgentProgressNarrator
         string words = name.Length == 0 ? (language == NarrationLanguage.Arabic ? "أداة" : "a tool") : Words(name);
         return ($"using {words}", $"use {words}", $"استخدام {words}");
     }
+
+    private static readonly (string Prefix, string English, string Arabic)[] ConnectorNames =
+    [
+        ("gmail_", "Gmail", "Gmail"),
+        ("google_calendar_", "Google Calendar", "تقويم Google"),
+        ("outlook_", "Outlook", "Outlook"),
+        ("github_", "GitHub", "GitHub"),
+    ];
 
     private static int Seconds(TimeSpan? delay) => (int)Math.Round((delay ?? TimeSpan.Zero).TotalSeconds);
 

@@ -44,6 +44,9 @@ public sealed record McpServerDefinition
     /// <summary>Skip approval for tools the server marks readOnlyHint=true. Only for servers you trust.</summary>
     public bool TrustReadOnlyHints { get; init; }
 
+    /// <summary>Offered to every expert (connectors added from the Connectors window), not only to experts that list it.</summary>
+    public bool ShareWithAllExperts { get; init; }
+
     public IReadOnlyList<string> Validate()
     {
         var errors = new List<string>();

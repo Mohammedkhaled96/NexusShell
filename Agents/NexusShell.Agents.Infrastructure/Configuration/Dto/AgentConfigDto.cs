@@ -163,4 +163,7 @@ internal sealed class McpServerDto
     public List<string>? AutoApprove { get; set; }
 
     public bool? TrustReadOnlyHints { get; set; }
+
+    /// <summary>Offer this server's tools to every expert (set by the Connectors window).</summary>
+    public bool? AllExperts { get; set; }
 }

@@ -392,6 +392,7 @@ internal sealed class FileAgentConfigurationProvider(
             RequireApproval = dto.RequireApproval ?? true,
             AutoApproveTools = dto.AutoApprove ?? [],
             TrustReadOnlyHints = dto.TrustReadOnlyHints ?? false,
+            ShareWithAllExperts = dto.AllExperts ?? false,
         };
 
         var errors = definition.Validate();

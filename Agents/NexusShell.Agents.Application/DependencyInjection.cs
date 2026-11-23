@@ -48,6 +48,9 @@ public static class DependencyInjection
 
         // Saved chats and scheduled tasks (store adapters come from Infrastructure).
         services.TryAddSingleton<IChatLibrary, ChatLibrary>();
+
+        // Connectors to external applications (adapters come from Infrastructure).
+        services.TryAddSingleton<Connectors.IConnectorService, Connectors.ConnectorService>();
         services.TryAddSingleton<IAgentScheduler, AgentScheduler>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IAgentToolProvider, ScheduleToolProvider>());
 
