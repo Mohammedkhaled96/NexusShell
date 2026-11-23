@@ -169,7 +169,9 @@ Full guide: `Agents/README.md`. Summary:
 - **Layers (one project each, dependencies point inward):** `NexusShell.Agents.Domain` (no packages) ← `NexusShell.Agents.Application` (Microsoft.Agents.AI + Workflows; ports in `Abstractions/`) ← `NexusShell.Agents.Infrastructure` (providers, MCP, skills, tools, config, secrets) ← `NexusShell.App` (calls `services.AddNexusAgents()` only).
 - **Orchestration:** `moe` (default; gate → parallel experts → synthesizer), `coordinator` (lead expert + `ask_*` sub-agents), `sequential` (Agent Framework workflow).
 - **Content, not code:** experts = `Agent/experts/*.md`, skills = `Agent/skills/<name>/SKILL.md`, MCP = `mcp.json`, providers/policies = `agent.json`; user overrides in `%AppData%\NexusShell\agent\`.
-- **UI:** AI Chat → "Agent mode" checkbox (auto-on when a model is available), live status line (`StatusText`, polite live region), "Agent keys" window, `ToolApprovalDialog`.
+- **UI:** AI Chat → "Agent mode" checkbox (auto-on when a model is available), live status line (`StatusText`, polite live region), "Agent keys" window, `ToolApprovalDialog`, Model / Expert / Permissions boxes, working folder, attachments, "Tools, skills and MCP", "Providers and models", "Memory" windows and slash commands (`/help`).
+- **Saved chats and scheduling:** every chat is saved per folder (`Application/Chats`, `Infrastructure/Chats`) and reopened from "Chat history" with the agent's full state; scheduled tasks (`Application/Scheduling`) run while NexusShell is open (`AgentSchedulerHostedService`) and save each result as a chat.
+- **Memory and context:** long-term memory (`Application/Memory`, file in `%AppData%\NexusShell\agent\memory`) is recalled into every expert's context; history, catch-up and attachments are sized from the model's context window (`Application/Context`), and old turns are summarized instead of dropped.
 
 ### Agent invariants (must not regress)
 1. **No secret values anywhere in code or config.** Only env var names (`apiKeyEnv`, `endpointEnv`, `${env:NAME}`). Values come from `ISecretStore` (user environment variables) at call time and are never logged.
@@ -178,3 +180,6 @@ Full guide: `Agents/README.md`. Summary:
 4. **Agent layers stay UI-free and use `ConfigureAwait(false)`;** UI work goes through ports implemented in `NexusShell.App` (`IToolApprovalHandler`, `IAgentToolProvider`).
 5. **Message author names must be id-style** (`expert.Id`) — providers reject spaces in `name`.
 6. **Every agent feature ships with a test** in `Agents/NexusShell.Agents.Tests` (integration tests run the real Agent Framework with a scripted `IChatClient`).
+7. **Memory never stores secrets** (`AgentMemory` refuses them), and a memory or context failure never breaks a turn: the expert answers without memories, or with old turns dropped.
+8. **Never send more than a model's context window.** New context sources (history, catch-up, attachments, memories) take their share from `ContextBudget`.
+9. **Unattended runs never act without consent.** Scheduled runs set `Unattended`, and approval-requiring tools are declined. Creating a schedule (`schedule_task`) is `ForceApproval`.

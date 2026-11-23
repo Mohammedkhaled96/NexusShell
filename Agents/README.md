@@ -39,7 +39,9 @@ Domain has no package references at all. Application only knows Agent Framework 
 |---|---|---|
 | Domain | `Providers/` `Models/` | `ProviderProfile`, `ProviderKind`, `ModelReference` (`provider/model`, `auto`) |
 | | `Experts/` `Routing/` `Orchestration/` | `ExpertProfile`, `RoutingDecision`, `OrchestrationSettings` |
-| | `Mcp/` `Tools/` `Secrets/` | `McpServerDefinition` (+ validation), `ToolRisk`/`ToolApprovalPolicy`, `SecretReference`, `SecretTemplate` |
+| | `Mcp/` `Tools/` `Secrets/` | `McpServerDefinition` (+ validation), `ToolRisk`/`ToolApprovalPolicy`, `SecretReference`, `SecretTemplate`, `SecretPatterns` |
+| | `Memory/` `Models/` | `MemoryEntry`, `MemorySettings`, `ModelContextWindows` (context window per model) |
+| | `Chats/` `Scheduling/` | `ChatSummary`, `SavedChat`; `ScheduledTask`, `TaskSchedule` (next-run calculation) |
 | | `Configuration/` | `NexusAgentConfiguration` (aggregate root) |
 | Application | `Abstractions/` | Ports: `ISecretStore`, `IChatClientFactory`, `IModelProviderAdapter`, `IProviderAvailability`, `IAgentToolProvider`, `IMcpToolProvider`, `ISkillsProviderFactory`, `IToolApprovalHandler`, `IAgentConfigurationProvider` |
 | | `Routing/` | MoE gate: `KeywordRoutingGate`, `LlmRoutingGate`, `ExpertRouter` (hybrid), `RoutingMath` (sparse top-k) |
@@ -47,12 +49,17 @@ Domain has no package references at all. Application only knows Agent Framework 
 | | `Agents/` | `ExpertAgentFactory` (pipeline builder), `InlineToolApprovalAgent`, `RecentMessagesChatReducer` |
 | | `SubAgents/` `Middleware/` `Models/` `Tools/` | `SubAgentTool`, `ToolInvocationMiddleware`, `ModelResolver`, `ToolCatalog` |
 | | `Conversations/` `Progress/` | `INexusAgentService` facade, `AgentRunScope` (progress + approvals) |
+| | `Memory/` | `IAgentMemory` (`AgentMemory`), `MemoryRanker` (BM25), `MemoryContextProvider` (Agent Framework `AIContextProvider`), `MemoryToolProvider` |
+| | `Context/` | `ContextBudget`, `TokenEstimator`, `CompactingChatReducer`, `ConversationSummarizer` |
+| | `Chats/` `Scheduling/` | `IChatLibrary` (save, rename, pin, duplicate, export, move), `IAgentScheduler` (`AgentScheduler`), `ScheduleParser`, `ScheduleToolProvider` |
 | Infrastructure | `Providers/` | `OpenAICompatibleProviderAdapter`, `AnthropicProviderAdapter`, `OllamaProviderAdapter`, `ChatClientFactory`, `ProviderAvailability` |
 | | `Mcp/` | `McpToolProvider` (lazy connections, `${env:}` expansion, approval classification) |
 | | `Skills/` | `FileSkillsProviderFactory` (Agent Framework `AgentSkillsProvider`), `SkillScriptRunner` |
 | | `Tools/<Category>/` | `SystemInfo`, `FileSystem`, `Shell`, `Web` tool providers |
 | | `Configuration/` `Experts/` | JSON DTOs, merge and validation, front-matter parser, Markdown expert loader, user folder scaffold |
 | | `Secrets/` | `EnvironmentVariableSecretStore`, `SecretRedactor` |
+| | `Memory/` | `JsonMemoryRepository` (`%AppData%\NexusShell\agent\memory\memories.json`) |
+| | `Chats/` `Scheduling/` | `JsonChatStore` (one folder per chat; deleting goes to the Recycle Bin), `JsonScheduledTaskStore` (`agent\schedule\tasks.json`) |
 | | `Agent/` | **Bundled content**: `agent.json`, `instructions.md`, `experts/*.md`, `skills/*/SKILL.md` |
 
 ## How a request flows (MoE mode)
@@ -64,7 +71,8 @@ Domain has no package references at all. Application only knows Agent Framework 
 2. **Experts in parallel.** Each selected expert is created lazily by `ExpertAgentFactory`:
    ```
    IChatClient (provider adapter + OpenTelemetry)
-     → ChatClientAgent (instructions, tools, MCP tools, sub-agent tools, skills, bounded memory)
+     → ChatClientAgent (instructions, tools, MCP tools, sub-agent tools, skills,
+                        long-term memory, history sized from the model's context window)
      → function middleware (audit, progress, secret redaction)
      → OpenTelemetry agent
      → InlineToolApprovalAgent (human-in-the-loop)
@@ -83,11 +91,54 @@ Domain has no package references at all. Application only knows Agent Framework 
 - When a model is **not found** (404, or a "decommissioned" 400) or **overloaded** (503), the expert is rebuilt on the next model. Order: the same provider's `defaultModel`, then its `fallbackModels`, then other providers. `IModelHealthRegistry` keeps the bad model out of use for 30 minutes (not found) or 2 minutes (overloaded).
 - Routing uses the `fast` model keyword, which resolves to each provider's `fastModel` (for example `gemini-3.5-flash-lite`). Routing decisions stay quick even when the main model is a slow thinking model.
 - `ThoughtSignatureHandler` keeps Gemini 3.x tool calling working through the OpenAI-compatible endpoint. Gemini requires each tool call's `thought_signature` to be sent back in the next request, and the OpenAI SDK drops it, so the handler captures the signature and re-attaches it. It does nothing for other providers.
-- SDK retries are reduced to 1, so a failing model hands over to the next one quickly instead of waiting through a long backoff.
+- SDK retries are turned off (OpenAI-compatible and Anthropic), so a failing model hands over to the next one immediately instead of waiting through a long backoff.
 
 Other modes (`orchestration.mode`):
 - `coordinator`: the coordinator expert gets every other expert as an `ask_*` sub-agent tool and decides itself when to delegate.
 - `sequential`: an Agent Framework workflow (`AgentWorkflowBuilder.BuildSequential`) runs `orchestration.sequence` as a pipeline (for example code, then review).
+
+## Long-term memory and the context window
+
+Goal: the agent answers from facts it was told or verified, not from guesses, and long
+conversations keep fitting the model without losing what was said.
+
+**Long-term memory** (`Memory/`):
+- Every expert gets four tools: `remember`, `recall_memory`, `update_memory` and `forget_memory`. They only touch the agent's own memory file, so they run without approval and stay available in read-only mode.
+- Before every model call, `MemoryContextProvider` recalls the relevant memories with `MemoryRanker` and adds them to the instructions. `MemoryRanker` uses BM25 (offline, works in English and Arabic), boosted by verification, recency and use; pinned memories always come along. Each memory is shown with its id, how it was learned (the user said it, verified with a tool, or the agent's own unverified note) and its date, followed by the rules: cite memories, re-check facts that can change, the user wins on conflicts, never save secrets.
+- `AgentMemory` enforces these rules:
+  - short facts only;
+  - credentials refused (`SecretPatterns` plus known secret values);
+  - near-duplicates merged;
+  - the least useful unpinned memories evicted beyond `maxEntries`.
+- Memories can be global or tied to the working folder (a project).
+- The user reviews everything in the chat's Memory window, or with `/remember`, `/memory` and `/forget`.
+
+**Context window** (`Context/`):
+- `ModelContextWindows` knows each model's window: the provider's `contextWindow`, then the model family (Gemini 1M, GPT-4.1 1M, GPT-5 400K, Claude 200K, and so on), then a safe default. For Ollama the window is also requested as `num_ctx`; Ollama's small default otherwise silently cuts prompts.
+- `ContextBudget` splits the window: answer reserve, history 45%, catch-up 10%, memories 5%, attachments 25%, instructions and tools 15%.
+- `CompactingChatReducer` keeps each expert's history within its budget. When it overflows, the oldest turns are summarized into notes by the `fast` model (`ConversationSummarizer`: facts, decisions, paths, commands, errors, open tasks, and nothing invented) and the recent turns are kept word for word. If summarizing fails, old turns are dropped as before. Tool calls are never separated from their results.
+- Catch-up turns and attachments are sized from the same budget, so large-context models read whole projects and small local models are never overflowed.
+
+The shared house rules (`Agent/instructions.md`, "Accuracy") tell every expert to answer only from the conversation, memory, attachments and tool results, and to say "I don't know" instead of guessing.
+
+## Saved chats and scheduled tasks
+
+**Saved chats** (`Chats/`):
+- Every chat is saved after each answer, in one folder per chat under the chats folder (default `%AppData%\NexusShell\chats`; the user can move it):
+  - `chat.json`: title, dates, pinned, the agent choices;
+  - `messages.json`: what the window shows;
+  - `agent-state.json`: the agent's own session, serialized by `MixtureOfExpertsAgent` with the shared transcript and each expert's history and summaries.
+- Reopening a chat passes that state to `StartConversationAsync(..., ConversationResume)`, so the conversation or task continues with full context. If the state cannot be read, the saved turns are replayed instead.
+- Secret values are masked before anything is written (`SecretPatterns.Mask` plus the redactor).
+- Titles come from the first question until the user renames the chat.
+- Deleting sends the folder to the Recycle Bin.
+
+**Scheduled tasks** (`Scheduling/`):
+- A task is a prompt the agent sends itself at a time: once, every N minutes (at least 5), daily, weekdays, or chosen weekdays, in the user's time zone. `TaskSchedule.NextAfter` handles daylight-saving gaps.
+- `AgentScheduler` checks every 20 seconds while NexusShell is open and runs due tasks one at a time. Each run is saved as a chat ("Scheduled: name"), either a new chat per run or one continued chat.
+- Runs missed while NexusShell was closed happen once at startup, or are marked missed (per task).
+- Runs are **unattended** (`ConversationOptions.Unattended`): `InlineToolApprovalAgent` declines every action that needs approval instead of opening a dialog nobody may answer, and the answer says what still needs the user.
+- The agent can create, list and cancel tasks with `schedule_task`, `list_scheduled_tasks` and `cancel_scheduled_task`. Creating and cancelling always ask the user, and a scheduled run can never schedule more work.
 
 ## Security model
 
@@ -99,6 +150,9 @@ Other modes (`orchestration.mode`):
 | Exfiltration through tools | `ToolInvocationMiddleware` redacts the values of credential-like environment variables from every tool result **before** it reaches the model. Terminal context and user messages are redacted too. |
 | Risky actions | `ToolRisk` + `ToolApprovalPolicy`: read-only tools run without asking. Network, mutating and destructive tools ask the user in an accessible dialog (Allow once / Allow for this conversation / Deny; Esc denies, and Enter never approves). `run_shell_command` and MCP tools always ask unless the user configured otherwise. The default for headless hosts is **deny all**. |
 | Credential files | `read_text_file` and `search_files` refuse private keys, `.env`, certificates and password vaults. |
+| Secrets in memory | `remember` and the Memory window refuse anything that looks like a key, token, private key or password assignment, and the value of any credential environment variable. |
+| Saved chats | Messages are masked (credential-shaped text and known secret values) before they are written. Chat ids are checked, so a path cannot escape the chats folder. |
+| Scheduled runs | They are unattended, so actions needing approval are declined, never taken. Creating a schedule always asks the user. Prompts containing secrets are refused. |
 | SSRF | `fetch_url` allows only http(s) to **public** IPs. The IP is checked again on every redirect and at socket connect time, which blocks DNS-rebinding attacks. |
 | Skill scripts | Off by default (scripts are not even listed to the model). When enabled, every run still asks for approval. |
 | Prompt injection | House rules tell experts to treat web, file, MCP and command output as data. Approvals and redaction enforce this in code. |
@@ -113,7 +167,9 @@ Bundled defaults live in `<app>\Agent\`. User additions and overrides live in `%
 | Override or disable an expert | Use the same file name in the user folder. `enabled: false` turns the expert off. |
 | Add a skill | `skills/<name>/SKILL.md` (Agent Skills format). Reference it from an expert's `skills:` list. |
 | Add an MCP server | Add it to `mcp.json` under `mcpServers`. Secrets go in as `${env:NAME}`. Opt in from an expert with `mcp: [name]`. |
-| Use a local model | Start Ollama (`ollama pull llama3.2`), or set LM Studio's `defaultModel` and add it to `models.preference`. |
+| Use a local model | Start Ollama (`ollama pull llama3.2`), LM Studio, llama.cpp, vLLM or Jan. They are already in `models.preference` and their installed models are found automatically. |
+| Give a model more context | Set the provider's `"contextWindow"` in tokens. For Ollama this is also the `num_ctx` it is asked for: larger means a longer memory and more RAM/VRAM. |
+| Tune memory | Use the `memory` section: `enabled`, `maxEntries`, `maxEntryChars`, `recallTopK`, `recallBudgetTokens`, and `compactHistory` (summarize old turns instead of dropping them). |
 | Use an online model | Set its key in the Agent keys window, or with `setx` in a terminal (variable name, then the key). `auto` picks the first available provider in `models.preference`. |
 | Pin a model per expert | Add `model: anthropic/claude-sonnet-5-5` (or `ollama/qwen2.5-coder`, and so on) to the expert's front-matter. |
 | Survive model retirements | Give a provider `"fallbackModels": [...]` (tried in order) and a quick `"fastModel"` for routing. |
