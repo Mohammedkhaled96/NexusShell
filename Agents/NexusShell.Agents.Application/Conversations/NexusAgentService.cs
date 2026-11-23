@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using System.Text;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
@@ -81,7 +82,10 @@ internal sealed class NexusAgentService(
                     ? provider.Kind == ProviderKind.Ollama ? $"not installed; install it with: ollama pull {model}" : "not loaded on this server"
                     : modelHealth.GetProviderIssue(provider.Id) is { } issue ? "skipped for now: " + issue
                     : detail;
-                models.Add(new ModelOption(provider.Id, model, provider.IsLocal, usable, why));
+                models.Add(new ModelOption(provider.Id, model, provider.IsLocal, usable, why)
+                {
+                    ContextWindow = Domain.Models.ModelContextWindows.Resolve(provider, model),
+                });
             }
         }
 
@@ -112,19 +116,35 @@ internal sealed class NexusAgentService(
     public Task<INexusAgentConversation> StartConversationAsync(string? initialContext = null, CancellationToken cancellationToken = default) =>
         StartConversationAsync(initialContext, ConversationOptions.Default, cancellationToken);
 
-    public async Task<INexusAgentConversation> StartConversationAsync(string? initialContext, ConversationOptions options, CancellationToken cancellationToken = default)
+    public Task<INexusAgentConversation> StartConversationAsync(string? initialContext, ConversationOptions options, CancellationToken cancellationToken = default) =>
+        StartConversationAsync(initialContext, options, null, cancellationToken);
+
+    public async Task<INexusAgentConversation> StartConversationAsync(string? initialContext, ConversationOptions options, ConversationResume? resume, CancellationToken cancellationToken = default)
     {
         var conversation = new NexusAgentConversation(
             BuildAsync,
+            AttachmentBudgetAsync,
             string.IsNullOrWhiteSpace(initialContext) ? null : redactor.Redact(initialContext),
             redactor,
             attachmentReader,
             loggerFactory.CreateLogger<NexusAgentConversation>());
         await conversation.UpdateOptionsAsync(options, cancellationToken).ConfigureAwait(false);
+        if (resume is not null) await conversation.RestoreAsync(resume, cancellationToken).ConfigureAwait(false);
         return conversation;
     }
 
     public void ReloadConfiguration() => configurationProvider.Invalidate();
+
+    /// <summary>
+    /// Attachment size from the context window of the model that will most likely answer
+    /// (the chosen one, else the first available): large windows take whole projects,
+    /// small local models are never flooded.
+    /// </summary>
+    private async Task<int> AttachmentBudgetAsync(ConversationOptions options, CancellationToken cancellationToken)
+    {
+        var model = await modelResolver.ResolveAsync(options.IsAutomaticModel ? null : options.Model, cancellationToken).ConfigureAwait(false);
+        return model is null ? Abstractions.Attachments.AttachmentLimits.DefaultTotalChars : Context.ContextBudget.For(model.Provider, model.ModelId).AttachmentChars;
+    }
 
     /// <summary>Builds the agent for the latest configuration with the conversation's options applied.</summary>
     private async Task<(AIAgent Agent, NexusAgentConfiguration Configuration)> BuildAsync(ConversationOptions options, CancellationToken cancellationToken)
@@ -138,6 +158,7 @@ internal sealed class NexusAgentService(
 
 internal sealed class NexusAgentConversation(
     Func<ConversationOptions, CancellationToken, Task<(AIAgent Agent, NexusAgentConfiguration Configuration)>> build,
+    Func<ConversationOptions, CancellationToken, Task<int>> attachmentBudget,
     string? initialContext,
     ISecretRedactor redactor,
     IAttachmentReader attachmentReader,
@@ -194,6 +215,68 @@ internal sealed class NexusAgentConversation(
         return UpdateOptionsAsync(Options, cancellationToken);
     }
 
+    public async Task<string?> ExportStateAsync(CancellationToken cancellationToken = default)
+    {
+        await _turnGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_agent is null || _session is null) return null;
+            var state = await _agent.SerializeSessionAsync(_session, null, cancellationToken).ConfigureAwait(false);
+            return state.GetRawText();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Conversation {ConversationId} state could not be saved; the chat keeps its messages only.", Id);
+            return null;
+        }
+        finally
+        {
+            _turnGate.Release();
+        }
+    }
+
+    /// <summary>Gives the agent its saved state back; falls back to replaying the turns when the state cannot be read.</summary>
+    internal async Task RestoreAsync(ConversationResume resume, CancellationToken cancellationToken)
+    {
+        await _turnGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (resume.AgentState is { Length: > 0 } state && _agent is not null)
+            {
+                try
+                {
+                    using var document = JsonDocument.Parse(state);
+                    _session = await _agent.DeserializeSessionAsync(document.RootElement.Clone(), null, cancellationToken).ConfigureAwait(false);
+                    logger.LogInformation("Conversation {ConversationId} continued from a saved chat (full agent state).", Id);
+                    return;
+                }
+                catch (Exception ex) when (ex is JsonException or ArgumentException or InvalidOperationException or NotSupportedException)
+                {
+                    logger.LogWarning(ex, "Saved agent state could not be restored; continuing from the saved turns.");
+                }
+            }
+
+            if (resume.Turns.Count == 0) return;
+            if (_session is MixtureOfExpertsSession moe)
+            {
+                foreach (var turn in resume.Turns) moe.AppendTurn(turn);
+            }
+            else
+            {
+                // Other modes: the earlier turns come with the next message instead.
+                var sb = new StringBuilder("Earlier in this conversation:\n");
+                foreach (var turn in resume.Turns.TakeLast(20))
+                    sb.Append("User: ").AppendLine(turn.User).Append("Assistant: ").AppendLine(turn.Assistant);
+                _pendingContext = sb.ToString();
+            }
+            logger.LogInformation("Conversation {ConversationId} continued from {Turns} saved turns.", Id, resume.Turns.Count);
+        }
+        finally
+        {
+            _turnGate.Release();
+        }
+    }
+
     public Task<AgentTurnResult> SendAsync(string message, IProgress<AgentProgress>? progress = null, CancellationToken cancellationToken = default) =>
         SendAsync(message, [], progress, cancellationToken);
 
@@ -216,13 +299,14 @@ internal sealed class NexusAgentConversation(
             IReadOnlyList<string> notes = [];
             if (attachments.Count > 0)
             {
-                var bundle = await attachmentReader.ReadAsync(attachments, cancellationToken).ConfigureAwait(false);
+                int maxChars = await attachmentBudget(Options, cancellationToken).ConfigureAwait(false);
+                var bundle = await attachmentReader.ReadAsync(attachments, maxChars, cancellationToken).ConfigureAwait(false);
                 notes = bundle.Notes;
                 if (!string.IsNullOrWhiteSpace(bundle.Text))
                     text.AppendLine().AppendLine().Append(redactor.Redact(bundle.Text));
             }
 
-            var scope = new AgentRunScope(progress, _approvedTools) { WorkingDirectory = _configuration?.WorkingDirectory };
+            var scope = new AgentRunScope(progress, _approvedTools) { WorkingDirectory = _configuration?.WorkingDirectory, Unattended = Options.Unattended };
             using var _ = AgentRunScope.Begin(scope);
             var response = await _agent!.RunAsync(new ChatMessage(ChatRole.User, text.ToString()), _session, null, cancellationToken).ConfigureAwait(false);
 

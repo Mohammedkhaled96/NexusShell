@@ -7,6 +7,9 @@ public sealed record ModelOption(string ProviderId, string ModelId, bool IsLocal
 {
     /// <summary>"provider/model" reference to pass back in <see cref="ConversationOptions.Model"/>.</summary>
     public string Reference => ProviderId + "/" + ModelId;
+
+    /// <summary>Tokens the model reads at once (history, memories and attachments are sized from it).</summary>
+    public int ContextWindow { get; init; }
 }
 
 public sealed record ExpertOption(string Id, string Name, string Description, bool Routable);

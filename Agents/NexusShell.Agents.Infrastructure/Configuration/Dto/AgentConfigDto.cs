@@ -19,6 +19,23 @@ internal sealed class AgentConfigDto
     public ToolsDto? Tools { get; set; }
 
     public SkillsDto? Skills { get; set; }
+
+    public MemoryDto? Memory { get; set; }
+}
+
+internal sealed class MemoryDto
+{
+    public bool? Enabled { get; set; }
+
+    public int? MaxEntries { get; set; }
+
+    public int? MaxEntryChars { get; set; }
+
+    public int? RecallTopK { get; set; }
+
+    public int? RecallBudgetTokens { get; set; }
+
+    public bool? CompactHistory { get; set; }
 }
 
 internal sealed class OrchestrationDto
@@ -89,6 +106,9 @@ internal sealed class ProviderDto
 
     /// <summary>Maximum seconds for one model call before failing over (default 60 online, 180 local).</summary>
     public int? TimeoutSeconds { get; set; }
+
+    /// <summary>Context window in tokens (default: known model size; Ollama 16384, requested as num_ctx).</summary>
+    public int? ContextWindow { get; set; }
 
     public bool? Enabled { get; set; }
 

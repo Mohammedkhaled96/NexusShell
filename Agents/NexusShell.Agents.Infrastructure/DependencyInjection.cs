@@ -3,16 +3,21 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NexusShell.Agents.Application;
 using NexusShell.Agents.Application.Abstractions.Attachments;
+using NexusShell.Agents.Application.Abstractions.Chats;
 using NexusShell.Agents.Application.Abstractions.Configuration;
 using NexusShell.Agents.Application.Abstractions.Mcp;
+using NexusShell.Agents.Application.Abstractions.Memory;
 using NexusShell.Agents.Application.Abstractions.Models;
 using NexusShell.Agents.Application.Abstractions.Secrets;
 using NexusShell.Agents.Application.Abstractions.Skills;
 using NexusShell.Agents.Application.Abstractions.Tools;
 using NexusShell.Agents.Infrastructure.Attachments;
+using NexusShell.Agents.Infrastructure.Chats;
 using NexusShell.Agents.Infrastructure.Configuration;
 using NexusShell.Agents.Infrastructure.Mcp;
+using NexusShell.Agents.Infrastructure.Memory;
 using NexusShell.Agents.Infrastructure.Providers;
+using NexusShell.Agents.Infrastructure.Scheduling;
 using NexusShell.Agents.Infrastructure.Secrets;
 using NexusShell.Agents.Infrastructure.Skills;
 using NexusShell.Agents.Infrastructure.Tools.FileSystem;
@@ -73,6 +78,14 @@ public static class DependencyInjection
         services.TryAddSingleton<IChatClientFactory, ChatClientFactory>();
         services.TryAddSingleton<IProviderAvailability, ProviderAvailability>();
         services.TryAddSingleton<IModelDiscovery, ModelDiscovery>();
+
+        // Long-term memory file (per Windows user)
+        services.TryAddSingleton<IMemoryRepository, JsonMemoryRepository>();
+
+        // Saved chats (one folder per chat; the host can change the folder) and scheduled tasks
+        services.TryAddSingleton(new ChatStorageOptions());
+        services.TryAddSingleton<IChatStore, JsonChatStore>();
+        services.TryAddSingleton<IScheduledTaskStore, JsonScheduledTaskStore>();
 
         // Files and folders the user attaches to a message
         services.TryAddSingleton<IAttachmentReader, FileAttachmentReader>();

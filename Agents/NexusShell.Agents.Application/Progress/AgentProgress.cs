@@ -19,6 +19,15 @@ public enum AgentProgressKind
     WaitingForQuota,
     Synthesizing,
     Warning,
+
+    /// <summary>Relevant long-term memories were added to an expert's context (<see cref="AgentProgress.Count"/>).</summary>
+    MemoryRecalled,
+
+    /// <summary>The agent saved or updated a long-term memory.</summary>
+    MemorySaved,
+
+    /// <summary>Old turns are being summarized so the conversation keeps fitting the context window.</summary>
+    CompactingHistory,
 }
 
 /// <summary>
@@ -45,6 +54,9 @@ public sealed record AgentProgress(AgentProgressKind Kind, string Message, strin
 
     /// <summary>How long the agent waits (for <see cref="AgentProgressKind.WaitingForQuota"/>).</summary>
     public TimeSpan? Delay { get; init; }
+
+    /// <summary>How many items (memories recalled, for <see cref="AgentProgressKind.MemoryRecalled"/>).</summary>
+    public int? Count { get; init; }
 }
 
 /// <summary>
@@ -72,6 +84,17 @@ public sealed class AgentRunScope
 
     /// <summary>Folder chosen by the user: tools resolve relative paths and run commands there.</summary>
     public string? WorkingDirectory { get; init; }
+
+    /// <summary>A scheduled run nobody is watching: approvals are declined instead of asked.</summary>
+    public bool Unattended { get; init; }
+
+    private readonly ConcurrentDictionary<string, bool> _once = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// True the first time <paramref name="key"/> is seen in this turn (always true outside a turn).
+    /// Used to do something once per message even when an expert is retried on another model.
+    /// </summary>
+    public static bool FirstTimeThisTurn(string key) => CurrentScope.Value is not { } scope || scope._once.TryAdd(key, true);
 
     public static IDisposable Begin(AgentRunScope scope)
     {

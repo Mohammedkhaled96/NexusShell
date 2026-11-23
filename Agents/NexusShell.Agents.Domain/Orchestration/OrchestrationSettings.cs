@@ -54,9 +54,15 @@ public sealed record OrchestrationSettings
     /// <summary>Maximum tool-approval round trips per agent run.</summary>
     public int MaxApprovalRounds { get; init; } = 8;
 
-    /// <summary>Conversation turns shared with the gate, synthesizer and experts that join late.</summary>
-    public int SharedHistoryTurns { get; init; } = 8;
+    /// <summary>
+    /// Most conversation turns an expert that joins late catches up on (the gate and the
+    /// synthesizer use the last few). The model's context window budget applies on top.
+    /// </summary>
+    public int SharedHistoryTurns { get; init; } = 30;
 
-    /// <summary>Messages kept in each expert's own session memory.</summary>
-    public int ExpertMemoryMessages { get; init; } = 40;
+    /// <summary>
+    /// Hard cap of messages in each expert's own history. The real limit is the model's
+    /// context window: older turns beyond it are summarized (or dropped when compaction is off).
+    /// </summary>
+    public int ExpertMemoryMessages { get; init; } = 400;
 }

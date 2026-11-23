@@ -43,6 +43,12 @@ public sealed record ConversationOptions
 
     public IReadOnlySet<string> DisabledMcpServers { get; init; } = None;
 
+    /// <summary>
+    /// Nobody is watching (scheduled runs): actions that need approval are declined automatically
+    /// instead of opening a dialog, and the answer says what still needs the user.
+    /// </summary>
+    public bool Unattended { get; init; }
+
     public bool IsAutomaticModel =>
         string.IsNullOrWhiteSpace(Model) || (ModelReference.TryParse(Model, out var reference) && reference.IsAuto);
 
@@ -54,5 +60,6 @@ public sealed record ConversationOptions
         WorkingDirectory ?? string.Empty,
         string.Join(",", DisabledTools.Order(StringComparer.OrdinalIgnoreCase)),
         string.Join(",", DisabledSkills.Order(StringComparer.OrdinalIgnoreCase)),
-        string.Join(",", DisabledMcpServers.Order(StringComparer.OrdinalIgnoreCase)));
+        string.Join(",", DisabledMcpServers.Order(StringComparer.OrdinalIgnoreCase)),
+        Unattended ? "unattended" : "attended");
 }

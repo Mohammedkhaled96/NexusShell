@@ -3,7 +3,12 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NexusShell.Agents.Application.Abstractions.Approval;
+using NexusShell.Agents.Application.Abstractions.Tools;
 using NexusShell.Agents.Application.Agents;
+using NexusShell.Agents.Application.Chats;
+using NexusShell.Agents.Application.Context;
+using NexusShell.Agents.Application.Scheduling;
+using NexusShell.Agents.Application.Memory;
 using NexusShell.Agents.Application.Conversations;
 using NexusShell.Agents.Application.Middleware;
 using NexusShell.Agents.Application.Models;
@@ -35,6 +40,16 @@ public static class DependencyInjection
         services.TryAddSingleton<KeywordRoutingGate>();
         services.TryAddSingleton<LlmRoutingGate>();
         services.TryAddSingleton<IExpertRouter, ExpertRouter>();
+
+        // Long-term memory (the repository adapter comes from Infrastructure) and context management.
+        services.TryAddSingleton<IAgentMemory, AgentMemory>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IAgentToolProvider, MemoryToolProvider>());
+        services.TryAddSingleton<ConversationSummarizer>();
+
+        // Saved chats and scheduled tasks (store adapters come from Infrastructure).
+        services.TryAddSingleton<IChatLibrary, ChatLibrary>();
+        services.TryAddSingleton<IAgentScheduler, AgentScheduler>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IAgentToolProvider, ScheduleToolProvider>());
 
         services.TryAddSingleton<ResponseSynthesizer>();
         services.TryAddSingleton<ToolInvocationMiddleware>();

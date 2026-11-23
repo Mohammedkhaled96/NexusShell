@@ -114,6 +114,9 @@
       "endpoint": "http://localhost:11434",
       "local": true,
       "defaultModel": "llama3.2",
+      // Tokens Ollama keeps in context (num_ctx). Larger = longer memory, more RAM/VRAM.
+      // NexusAgent never asks more than the model supports. Other providers: known model sizes are used.
+      "contextWindow": 16384,
       // Offered in the agent window. Installed models are found automatically; these are suggestions
       // (install one with: ollama pull <name>). Models without tool calling answer without tools.
       "models": [ "qwen3", "qwen2.5-coder", "llama3.1", "gpt-oss:20b", "gemma3", "phi4-mini", "mistral", "deepseek-r1" ]
@@ -150,5 +153,18 @@
   "skills": {
     // Allow skills to run their bundled scripts (each run still asks for approval).
     "enableScripts": false
+  },
+
+  "memory": {
+    // Long-term memory (%AppData%\NexusShell\agent\memory\memories.json): relevant memories are recalled
+    // into every expert's context; experts save facts with the remember tool. Never stores secrets.
+    "enabled": true,
+    "maxEntries": 2000,
+    "maxEntryChars": 1000,
+    "recallTopK": 8,            // relevant memories per message (pinned ones always come too)
+    "recallBudgetTokens": 2000, // upper bound; small models get at most 5% of their context window
+    // When a conversation outgrows the model's context window, summarize the oldest turns
+    // (one quick model call) instead of dropping them.
+    "compactHistory": true
   }
 }

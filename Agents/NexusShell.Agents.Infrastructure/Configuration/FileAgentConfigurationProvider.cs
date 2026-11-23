@@ -4,6 +4,7 @@ using NexusShell.Agents.Application.Abstractions.Configuration;
 using NexusShell.Agents.Domain.Common;
 using NexusShell.Agents.Domain.Configuration;
 using NexusShell.Agents.Domain.Mcp;
+using NexusShell.Agents.Domain.Memory;
 using NexusShell.Agents.Domain.Orchestration;
 using NexusShell.Agents.Domain.Providers;
 using NexusShell.Agents.Domain.Routing;
@@ -73,6 +74,7 @@ internal sealed class FileAgentConfigurationProvider(
             Orchestration = MapOrchestration(merged.Orchestration, warnings),
             ToolPolicy = MapToolPolicy(merged.Tools, warnings),
             Skills = new SkillSettings { EnableScripts = merged.Skills?.EnableScripts ?? false },
+            Memory = MapMemory(merged.Memory),
             Experts = experts,
             McpServers = mcpServers,
             SharedInstructions = ReadSharedInstructions(),
@@ -130,6 +132,15 @@ internal sealed class FileAgentConfigurationProvider(
             Models = new ModelsDto { Preference = user.Models?.Preference ?? bundled.Models?.Preference },
             Tools = new ToolsDto { AutoApprove = user.Tools?.AutoApprove ?? bundled.Tools?.AutoApprove },
             Skills = new SkillsDto { EnableScripts = user.Skills?.EnableScripts ?? bundled.Skills?.EnableScripts },
+            Memory = new MemoryDto
+            {
+                Enabled = user.Memory?.Enabled ?? bundled.Memory?.Enabled,
+                MaxEntries = user.Memory?.MaxEntries ?? bundled.Memory?.MaxEntries,
+                MaxEntryChars = user.Memory?.MaxEntryChars ?? bundled.Memory?.MaxEntryChars,
+                RecallTopK = user.Memory?.RecallTopK ?? bundled.Memory?.RecallTopK,
+                RecallBudgetTokens = user.Memory?.RecallBudgetTokens ?? bundled.Memory?.RecallBudgetTokens,
+                CompactHistory = user.Memory?.CompactHistory ?? bundled.Memory?.CompactHistory,
+            },
             Orchestration = new OrchestrationDto
             {
                 Mode = u.Mode ?? b.Mode,
@@ -166,6 +177,7 @@ internal sealed class FileAgentConfigurationProvider(
         FastModel = user.FastModel ?? bundled.FastModel,
         Models = bundled.Models is null ? user.Models : user.Models is null ? bundled.Models : bundled.Models.Concat(user.Models).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
         TimeoutSeconds = user.TimeoutSeconds ?? bundled.TimeoutSeconds,
+        ContextWindow = user.ContextWindow ?? bundled.ContextWindow,
         Enabled = user.Enabled ?? bundled.Enabled,
         Extra = (bundled.Extra ?? []).Concat(user.Extra ?? []).GroupBy(p => p.Key, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Last().Value),
     };
@@ -240,6 +252,7 @@ internal sealed class FileAgentConfigurationProvider(
                 FastModel = string.IsNullOrWhiteSpace(dto.FastModel) ? null : dto.FastModel.Trim(),
                 Models = dto.Models?.Where(m => !string.IsNullOrWhiteSpace(m)).Select(m => m.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? [],
                 RequestTimeout = dto.TimeoutSeconds is int seconds ? TimeSpan.FromSeconds(Math.Clamp(seconds, 1, 1800)) : null,
+                ContextWindow = dto.ContextWindow is int window ? Math.Clamp(window, 2_048, 10_000_000) : null,
                 Enabled = dto.Enabled ?? true,
             };
         }
@@ -293,6 +306,21 @@ internal sealed class FileAgentConfigurationProvider(
             MaxApprovalRounds = Math.Clamp(dto.MaxApprovalRounds ?? defaults.MaxApprovalRounds, 1, 50),
             SharedHistoryTurns = Math.Clamp(dto.SharedHistoryTurns ?? defaults.SharedHistoryTurns, 0, 50),
             ExpertMemoryMessages = Math.Clamp(dto.ExpertMemoryMessages ?? defaults.ExpertMemoryMessages, 4, 500),
+        };
+    }
+
+    internal static MemorySettings MapMemory(MemoryDto? dto)
+    {
+        var defaults = new MemorySettings();
+        if (dto is null) return defaults;
+        return new MemorySettings
+        {
+            Enabled = dto.Enabled ?? defaults.Enabled,
+            MaxEntries = Math.Clamp(dto.MaxEntries ?? defaults.MaxEntries, 10, 100_000),
+            MaxEntryChars = Math.Clamp(dto.MaxEntryChars ?? defaults.MaxEntryChars, 100, 10_000),
+            RecallTopK = Math.Clamp(dto.RecallTopK ?? defaults.RecallTopK, 1, 50),
+            RecallBudgetTokens = Math.Clamp(dto.RecallBudgetTokens ?? defaults.RecallBudgetTokens, 200, 50_000),
+            CompactHistory = dto.CompactHistory ?? defaults.CompactHistory,
         };
     }
 

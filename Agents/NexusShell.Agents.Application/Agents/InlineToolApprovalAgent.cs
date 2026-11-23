@@ -107,6 +107,16 @@ internal sealed class InlineToolApprovalAgent(
         }
 
         string agentName = displayName ?? Name ?? Id;
+
+        // Scheduled runs happen while nobody may be at the computer: never wait on a dialog,
+        // never act without consent. The model is told the action was declined and says so.
+        if (scope?.Unattended == true)
+        {
+            logger.LogInformation("Tool {Tool} requested by {Agent} during an unattended run: declined (needs the user's approval).", toolName, agentName);
+            AgentRunScope.Report(new AgentProgress(AgentProgressKind.Warning, $"{agentName}: {toolName} needs your approval and was skipped in this scheduled run", agentName) { ToolName = toolName });
+            return false;
+        }
+
         AgentRunScope.Report(new AgentProgress(AgentProgressKind.ApprovalRequested, $"{agentName} wants to run {toolName}", agentName) { ToolName = toolName });
 
         toolRisks.TryGetValue(toolName, out var risk);

@@ -46,6 +46,11 @@ public static class AgentProgressNarrator
                 ? $"{who}: كل المزوّدين وصلوا إلى الحد، الانتظار {Seconds(step.Delay)} ثانية ثم إعادة المحاولة."
                 : $"{who}: every provider is at its limit, waiting {Seconds(step.Delay)} seconds, then trying again.",
             AgentProgressKind.Synthesizing => ar ? "جارٍ دمج الإجابات." : "Combining the answers.",
+            AgentProgressKind.MemoryRecalled => step.Count is int n && n > 0
+                ? (ar ? $"{who}: يستخدم {n} من المعلومات المحفوظة." : $"{who}: using {n} saved {(n == 1 ? "memory" : "memories")}.")
+                : null,
+            AgentProgressKind.MemorySaved => ar ? "تم حفظ معلومة في الذاكرة." : "Saved to memory.",
+            AgentProgressKind.CompactingHistory => ar ? "جارٍ تلخيص بداية المحادثة للاحتفاظ بها." : "Summarizing the earlier conversation to keep it in mind.",
             _ => string.IsNullOrWhiteSpace(step.Message) ? null : step.Message,
         };
     }
@@ -117,6 +122,13 @@ public static class AgentProgressNarrator
             case "load_skill": return ("loading a skill", "load a skill", "تحميل مهارة");
             case "read_skill_resource": return ("reading skill material", "read skill material", "قراءة مرجع مهارة");
             case "run_skill_script": return ("running a skill script", "run a skill script", "تشغيل سكربت مهارة");
+            case "remember": return ("saving to memory", "save to memory", "الحفظ في الذاكرة");
+            case "recall_memory": return ("searching memory", "search memory", "البحث في الذاكرة");
+            case "update_memory": return ("correcting a memory", "correct a memory", "تصحيح معلومة محفوظة");
+            case "forget_memory": return ("deleting a memory", "delete a memory", "حذف معلومة محفوظة");
+            case "schedule_task": return ("scheduling a task", "schedule a task", "جدولة مهمة");
+            case "list_scheduled_tasks": return ("checking the scheduled tasks", "check the scheduled tasks", "عرض المهام المجدولة");
+            case "cancel_scheduled_task": return ("cancelling a scheduled task", "cancel a scheduled task", "إلغاء مهمة مجدولة");
         }
 
         if (name.StartsWith("ask_", StringComparison.Ordinal))

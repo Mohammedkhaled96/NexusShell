@@ -55,6 +55,12 @@ public sealed record ProviderProfile
     /// </summary>
     public TimeSpan? RequestTimeout { get; init; }
 
+    /// <summary>
+    /// Context window in tokens for this provider's models (null = known model size or a safe default).
+    /// For Ollama it is also requested from the server (num_ctx), so raise it to give local models more room.
+    /// </summary>
+    public int? ContextWindow { get; init; }
+
     public TimeSpan EffectiveRequestTimeout => RequestTimeout ?? (IsLocal ? TimeSpan.FromSeconds(180) : TimeSpan.FromSeconds(60));
 
     /// <summary>Default model first, then the fallbacks (no duplicates).</summary>

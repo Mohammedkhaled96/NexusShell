@@ -8,6 +8,8 @@ using NexusShell.Agents.Application.Abstractions.Models;
 using NexusShell.Agents.Application.Abstractions.Secrets;
 using NexusShell.Agents.Application.Abstractions.Skills;
 using NexusShell.Agents.Application.Abstractions.Tools;
+using NexusShell.Agents.Application.Context;
+using NexusShell.Agents.Application.Memory;
 using NexusShell.Agents.Application.Middleware;
 using NexusShell.Agents.Application.Models;
 using NexusShell.Agents.Application.SubAgents;
@@ -56,7 +58,9 @@ internal sealed class ExpertAgentFactory(
     ToolInvocationMiddleware toolMiddleware,
     ILoggerFactory loggerFactory,
     IServiceProvider services,
-    IModelHealthRegistry modelHealth) : IExpertAgentFactory
+    IModelHealthRegistry modelHealth,
+    IAgentMemory memory,
+    ConversationSummarizer summarizer) : IExpertAgentFactory
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<ExpertAgentFactory>();
 
@@ -70,6 +74,7 @@ internal sealed class ExpertAgentFactory(
             ?? throw new AgentUnavailableException(NoModelMessage(expert, configuration));
 
         IChatClient chatClient = chatClientFactory.CreateChatClient(model.Provider, model.ModelId);
+        var budget = ContextBudget.For(model.Provider, model.ModelId);
 
         var tools = new List<AITool>();
         var risks = new Dictionary<string, ToolRisk>(StringComparer.OrdinalIgnoreCase);
@@ -90,6 +95,17 @@ internal sealed class ExpertAgentFactory(
         }
 
         foreach (var descriptor in toolCatalog.Resolve(expert.Tools))
+            AddTool(descriptor);
+
+        // Every expert can save, search, correct and forget long-term memories...
+        if (configuration.Memory.Enabled)
+        {
+            foreach (var descriptor in toolCatalog.Resolve([MemoryToolProvider.CategoryName]))
+                AddTool(descriptor);
+        }
+
+        // ...and schedule work for later when the user asks (creating a schedule always asks the user).
+        foreach (var descriptor in toolCatalog.Resolve([Scheduling.ScheduleToolProvider.CategoryName]))
             AddTool(descriptor);
 
         if (expert.McpServers.Count > 0)
@@ -113,6 +129,23 @@ internal sealed class ExpertAgentFactory(
 
         var skills = skillsProviderFactory.CreateFor(expert, configuration);
 
+        var contextProviders = new List<AIContextProvider>();
+        if (skills is not null) contextProviders.Add(skills);
+        if (configuration.Memory.Enabled)
+        {
+            contextProviders.Add(new MemoryContextProvider(
+                memory,
+                configuration.Memory,
+                budget.MemoryTokens(configuration.Memory.RecallBudgetTokens),
+                expert.Name,
+                loggerFactory.CreateLogger<MemoryContextProvider>()));
+        }
+
+        // History sized from the model's context window: old turns are summarized, not forgotten.
+        HistorySummarizer? summarize = configuration.Memory.CompactHistory
+            ? (old, previous, token) => summarizer.SummarizeAsync(old, previous, budget.SummaryTokens, token)
+            : null;
+
         var options = new ChatClientAgentOptions
         {
             // Id-style name: providers reject spaces in message author names.
@@ -127,9 +160,16 @@ internal sealed class ExpertAgentFactory(
             },
             ChatHistoryProvider = new InMemoryChatHistoryProvider(new InMemoryChatHistoryProviderOptions
             {
-                ChatReducer = new RecentMessagesChatReducer(Math.Max(4, configuration.Orchestration.ExpertMemoryMessages)),
+                ChatReducer = new CompactingChatReducer(
+                    budget.HistoryTokens,
+                    Math.Max(4, configuration.Orchestration.ExpertMemoryMessages),
+                    budget.SummaryTokens,
+                    summarize,
+                    loggerFactory.CreateLogger<CompactingChatReducer>()),
+                // Reduce once after each turn and store the result: a summary is written once, not on every call.
+                ReducerTriggerEvent = InMemoryChatHistoryProviderOptions.ChatReducerTriggerEvent.AfterMessageAdded,
             }),
-            AIContextProviders = skills is null ? null : [skills],
+            AIContextProviders = contextProviders.Count == 0 ? null : contextProviders,
         };
 
         AIAgent agent = chatClient
@@ -149,8 +189,8 @@ internal sealed class ExpertAgentFactory(
             expert.Name);
 
         _logger.LogInformation(
-            "Expert {Expert} ready on {Model} (depth {Depth}, {ToolCount} tools, {SubAgentCount} sub-agents, skills: {HasSkills}).",
-            expert.Id, model, depth, tools.Count, subAgents.Count, skills is not null);
+            "Expert {Expert} ready on {Model} (depth {Depth}, {ToolCount} tools, {SubAgentCount} sub-agents, skills: {HasSkills}, memory: {Memory}, context {Context} tokens, history budget {History}).",
+            expert.Id, model, depth, tools.Count, subAgents.Count, skills is not null, configuration.Memory.Enabled, budget.ContextWindow, budget.HistoryTokens);
 
         return new ExpertAgent(expert, agent, model);
     }

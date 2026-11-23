@@ -1,6 +1,7 @@
 using NexusShell.Agents.Domain.Common;
 using NexusShell.Agents.Domain.Experts;
 using NexusShell.Agents.Domain.Mcp;
+using NexusShell.Agents.Domain.Memory;
 using NexusShell.Agents.Domain.Orchestration;
 using NexusShell.Agents.Domain.Providers;
 using NexusShell.Agents.Domain.Tools;
@@ -31,6 +32,9 @@ public sealed record NexusAgentConfiguration
     public ToolApprovalPolicy ToolPolicy { get; init; } = ToolApprovalPolicy.Default;
 
     public SkillSettings Skills { get; init; } = new();
+
+    /// <summary>Long-term memory and context-window behaviour.</summary>
+    public MemorySettings Memory { get; init; } = new();
 
     public IReadOnlyList<ExpertProfile> Experts { get; init; } = [];
 

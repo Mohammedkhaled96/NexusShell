@@ -345,9 +345,11 @@ public sealed class MixtureOfExpertsAgent : AIAgent
                     state.PendingSerializedSession = null;
                 }
 
-                // Catch-up: the shared turns this expert has not seen yet.
+                // Catch-up: the shared turns this expert has not seen yet, newest first within its context budget.
                 var messages = new List<ChatMessage>();
-                foreach (var turn in session.TurnsSince(state.SeenTurns, _configuration.Orchestration.SharedHistoryTurns))
+                var missed = session.TurnsSince(state.SeenTurns, _configuration.Orchestration.SharedHistoryTurns);
+                int catchUpBudget = Context.ContextBudget.For(expert.Model.Provider, expert.Model.ModelId).CatchUpTokens;
+                foreach (var turn in FitTurns(missed, catchUpBudget))
                 {
                     messages.Add(new ChatMessage(ChatRole.User, turn.User));
                     messages.Add(new ChatMessage(ChatRole.Assistant, turn.Assistant));
@@ -382,6 +384,22 @@ public sealed class MixtureOfExpertsAgent : AIAgent
                 NoModelAvailable = ex is AgentUnavailableException,
             };
         }
+    }
+
+    /// <summary>The newest turns that fit in <paramref name="budgetTokens"/>, in chronological order (always at least the last turn).</summary>
+    internal static IReadOnlyList<ConversationTurn> FitTurns(IReadOnlyList<ConversationTurn> turns, int budgetTokens)
+    {
+        var kept = new List<ConversationTurn>();
+        int used = 0;
+        for (int i = turns.Count - 1; i >= 0; i--)
+        {
+            int cost = Context.TokenEstimator.Estimate(turns[i].User) + Context.TokenEstimator.Estimate(turns[i].Assistant) + 8;
+            if (used + cost > budgetTokens && kept.Count > 0) break;
+            kept.Add(turns[i]);
+            used += cost;
+        }
+        kept.Reverse();
+        return kept;
     }
 
     private async Task<ExpertAgent> GetExpertAsync(ExpertProfile profile)

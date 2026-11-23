@@ -23,6 +23,9 @@ public interface INexusAgentService
     /// <param name="options">Model, expert, permissions, working folder and turned-off capabilities.</param>
     Task<INexusAgentConversation> StartConversationAsync(string? initialContext, ConversationOptions options, CancellationToken cancellationToken = default);
 
+    /// <summary>Continues a saved chat: the agent gets its full earlier state back (or at least the earlier turns).</summary>
+    Task<INexusAgentConversation> StartConversationAsync(string? initialContext, ConversationOptions options, ConversationResume? resume, CancellationToken cancellationToken = default);
+
     /// <summary>Re-read configuration, experts and MCP definitions on the next conversation.</summary>
     void ReloadConfiguration();
 }
@@ -41,10 +44,35 @@ public interface INexusAgentConversation
     /// <summary>Rebuilds the agent from the latest configuration (new providers, models, MCP servers); history is kept.</summary>
     Task ReloadAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>The agent's state as JSON (to save the chat and continue it later), or null when it cannot be saved.</summary>
+    Task<string?> ExportStateAsync(CancellationToken cancellationToken = default);
+
     Task<AgentTurnResult> SendAsync(string message, IProgress<AgentProgress>? progress = null, CancellationToken cancellationToken = default);
 
     /// <param name="attachments">Files and folders whose content is shared with the agent for this message.</param>
     Task<AgentTurnResult> SendAsync(string message, IReadOnlyList<string> attachments, IProgress<AgentProgress>? progress = null, CancellationToken cancellationToken = default);
+}
+
+/// <summary>What a saved chat hands back to the agent: its serialized state, and the turns as a fallback.</summary>
+public sealed record ConversationResume(string? AgentState, IReadOnlyList<Routing.ConversationTurn> Turns)
+{
+    /// <summary>User/assistant pairs from displayed messages (notes and commands are skipped).</summary>
+    public static ConversationResume FromChat(Domain.Chats.SavedChat chat)
+    {
+        ArgumentNullException.ThrowIfNull(chat);
+        var turns = new List<Routing.ConversationTurn>();
+        string? pendingUser = null;
+        foreach (var message in chat.Messages)
+        {
+            if (message.Role == "user") pendingUser = message.Content;
+            else if (message.Role == "assistant" && pendingUser is not null)
+            {
+                turns.Add(new Routing.ConversationTurn(pendingUser, message.Content, []));
+                pendingUser = null;
+            }
+        }
+        return new ConversationResume(chat.AgentState, turns);
+    }
 }
 
 public sealed record ExpertContribution(string ExpertId, string ExpertName, double Weight, string Model, bool Succeeded, string? Error);

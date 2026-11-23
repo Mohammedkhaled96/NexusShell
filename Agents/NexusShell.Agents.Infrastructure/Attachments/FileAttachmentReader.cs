@@ -34,18 +34,27 @@ internal sealed class FileAttachmentReader(ILogger<FileAttachmentReader> logger)
         ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".woff", ".woff2", ".ttf", ".otf", ".db", ".sqlite", ".nupkg",
     };
 
-    public Task<AttachmentBundle> ReadAsync(IReadOnlyList<string> paths, CancellationToken cancellationToken = default)
+    public Task<AttachmentBundle> ReadAsync(IReadOnlyList<string> paths, CancellationToken cancellationToken = default) =>
+        ReadAsync(paths, MaxTotalChars, cancellationToken);
+
+    public Task<AttachmentBundle> ReadAsync(IReadOnlyList<string> paths, int maxTotalChars, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(paths);
-        return Task.Run(() => Read(paths, cancellationToken), cancellationToken);
+        return Task.Run(() => Read(paths, Math.Max(2_000, maxTotalChars), cancellationToken), cancellationToken);
     }
 
-    internal AttachmentBundle Read(IReadOnlyList<string> paths, CancellationToken cancellationToken)
+    /// <summary>Largest single file: grows with the budget so large-context models can read whole files.</summary>
+    internal static int PerFileLimit(int maxTotalChars) => Math.Min(maxTotalChars, MaxFileChars + Math.Max(0, (maxTotalChars - MaxTotalChars) / 2));
+
+    internal AttachmentBundle Read(IReadOnlyList<string> paths, CancellationToken cancellationToken) => Read(paths, MaxTotalChars, cancellationToken);
+
+    internal AttachmentBundle Read(IReadOnlyList<string> paths, int maxTotalChars, CancellationToken cancellationToken)
     {
+        int perFile = PerFileLimit(maxTotalChars);
         var sb = new StringBuilder();
         var notes = new List<string>();
         int included = 0;
-        int budget = MaxTotalChars;
+        int budget = maxTotalChars;
 
         sb.AppendLine("Attached by the user (read-only copies of their content):");
         foreach (string raw in paths.Where(p => !string.IsNullOrWhiteSpace(p)).Distinct(StringComparer.OrdinalIgnoreCase))
@@ -64,11 +73,11 @@ internal sealed class FileAttachmentReader(ILogger<FileAttachmentReader> logger)
 
             if (Directory.Exists(full))
             {
-                included += AppendFolder(full, sb, notes, ref budget, cancellationToken);
+                included += AppendFolder(full, sb, notes, ref budget, perFile, cancellationToken);
             }
             else if (File.Exists(full))
             {
-                if (AppendFile(full, Path.GetFileName(full), sb, notes, ref budget)) included++;
+                if (AppendFile(full, Path.GetFileName(full), sb, notes, ref budget, perFile)) included++;
             }
             else
             {
@@ -81,7 +90,7 @@ internal sealed class FileAttachmentReader(ILogger<FileAttachmentReader> logger)
         return new AttachmentBundle(sb.ToString().TrimEnd(), included, notes);
     }
 
-    private int AppendFolder(string folder, StringBuilder sb, List<string> notes, ref int budget, CancellationToken cancellationToken)
+    private int AppendFolder(string folder, StringBuilder sb, List<string> notes, ref int budget, int perFile, CancellationToken cancellationToken)
     {
         sb.AppendLine().Append("### Folder ").AppendLine(folder);
 
@@ -103,7 +112,7 @@ internal sealed class FileAttachmentReader(ILogger<FileAttachmentReader> logger)
                 notes.Add($"{Path.GetFileName(folder)}: only {included} of {files.Count} files were included; the agent can read others with its file tools.");
                 break;
             }
-            if (AppendFile(file, Path.GetRelativePath(folder, file), sb, notes, ref budget, quiet: true)) included++;
+            if (AppendFile(file, Path.GetRelativePath(folder, file), sb, notes, ref budget, perFile, quiet: true)) included++;
         }
         return included;
 
@@ -144,7 +153,7 @@ internal sealed class FileAttachmentReader(ILogger<FileAttachmentReader> logger)
         }
     }
 
-    private static bool AppendFile(string path, string label, StringBuilder sb, List<string> notes, ref int budget, bool quiet = false)
+    private static bool AppendFile(string path, string label, StringBuilder sb, List<string> notes, ref int budget, int perFile, bool quiet = false)
     {
         string name = Path.GetFileName(path);
         if (FileSystemToolProvider.IsBlocked(path))
@@ -172,7 +181,7 @@ internal sealed class FileAttachmentReader(ILogger<FileAttachmentReader> logger)
                 if (!quiet) notes.Add($"{name}: skipped, it is not a text file.");
                 return false;
             }
-            text = ReadPrefix(path, Math.Min(MaxFileChars, budget) + 1);
+            text = ReadPrefix(path, Math.Min(perFile, budget) + 1);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -180,7 +189,7 @@ internal sealed class FileAttachmentReader(ILogger<FileAttachmentReader> logger)
             return false;
         }
 
-        int limit = Math.Min(MaxFileChars, budget);
+        int limit = Math.Min(perFile, budget);
         bool cut = text.Length > limit;
         if (cut)
         {
