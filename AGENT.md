@@ -171,6 +171,7 @@ Full guide: `Agents/README.md`. Summary:
 - **Content, not code:** experts = `Agent/experts/*.md`, skills = `Agent/skills/<name>/SKILL.md`, MCP = `mcp.json`, providers/policies = `agent.json`; user overrides in `%AppData%\NexusShell\agent\`.
 - **UI:** AI Chat → "Agent mode" checkbox (auto-on when a model is available), live status line (`StatusText`, polite live region), "Agent keys" window, `ToolApprovalDialog`, Model / Expert / Permissions boxes, working folder, attachments, "Tools, skills and MCP", "Providers and models", "Memory" windows and slash commands (`/help`).
 - **Saved chats and scheduling:** every chat is saved per folder (`Application/Chats`, `Infrastructure/Chats`) and reopened from "Chat history" with the agent's full state; scheduled tasks (`Application/Scheduling`) run while NexusShell is open (`AgentSchedulerHostedService`) and save each result as a chat.
+- **Connectors:** Gmail and Google Calendar, Outlook mail and calendar (Microsoft Graph), GitHub, plus MCP templates (Notion, Jira and Confluence, Slack, Playwright, Context7). Connected apps give every expert their tools; the Connectors window (Alt+G) handles setup and browser sign-in.
 - **Memory and context:** long-term memory (`Application/Memory`, file in `%AppData%\NexusShell\agent\memory`) is recalled into every expert's context; history, catch-up and attachments are sized from the model's context window (`Application/Context`), and old turns are summarized instead of dropped.
 
 ### Agent invariants (must not regress)
@@ -183,3 +184,4 @@ Full guide: `Agents/README.md`. Summary:
 7. **Memory never stores secrets** (`AgentMemory` refuses them), and a memory or context failure never breaks a turn: the expert answers without memories, or with old turns dropped.
 8. **Never send more than a model's context window.** New context sources (history, catch-up, attachments, memories) take their share from `ContextBudget`.
 9. **Unattended runs never act without consent.** Scheduled runs set `Unattended`, and approval-requiring tools are declined. Creating a schedule (`schedule_task`) is `ForceApproval`.
+10. **Connectors never send or change without the user.** Every write tool (send, reply, create, delete, comment) is `ForceApproval`. Sign-ins and tokens live only in user environment variables. Text from mail, issues and events is marked as outside data.

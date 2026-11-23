@@ -42,6 +42,7 @@ Domain has no package references at all. Application only knows Agent Framework 
 | | `Mcp/` `Tools/` `Secrets/` | `McpServerDefinition` (+ validation), `ToolRisk`/`ToolApprovalPolicy`, `SecretReference`, `SecretTemplate`, `SecretPatterns` |
 | | `Memory/` `Models/` | `MemoryEntry`, `MemorySettings`, `ModelContextWindows` (context window per model) |
 | | `Chats/` `Scheduling/` | `ChatSummary`, `SavedChat`; `ScheduledTask`, `TaskSchedule` (next-run calculation) |
+| | `Connectors/` | `ConnectorDefinition`, `ConnectorField`, `ConnectorAbility`, `ConnectorState` |
 | | `Configuration/` | `NexusAgentConfiguration` (aggregate root) |
 | Application | `Abstractions/` | Ports: `ISecretStore`, `IChatClientFactory`, `IModelProviderAdapter`, `IProviderAvailability`, `IAgentToolProvider`, `IMcpToolProvider`, `ISkillsProviderFactory`, `IToolApprovalHandler`, `IAgentConfigurationProvider` |
 | | `Routing/` | MoE gate: `KeywordRoutingGate`, `LlmRoutingGate`, `ExpertRouter` (hybrid), `RoutingMath` (sparse top-k) |
@@ -52,6 +53,7 @@ Domain has no package references at all. Application only knows Agent Framework 
 | | `Memory/` | `IAgentMemory` (`AgentMemory`), `MemoryRanker` (BM25), `MemoryContextProvider` (Agent Framework `AIContextProvider`), `MemoryToolProvider` |
 | | `Context/` | `ContextBudget`, `TokenEstimator`, `CompactingChatReducer`, `ConversationSummarizer` |
 | | `Chats/` `Scheduling/` | `IChatLibrary` (save, rename, pin, duplicate, export, move), `IAgentScheduler` (`AgentScheduler`), `ScheduleParser`, `ScheduleToolProvider` |
+| | `Connectors/` | `IConnector` (port), `IConnectorService`, `McpConnectorPresets`, `IMcpSettingsStore` (port) |
 | Infrastructure | `Providers/` | `OpenAICompatibleProviderAdapter`, `AnthropicProviderAdapter`, `OllamaProviderAdapter`, `ChatClientFactory`, `ProviderAvailability` |
 | | `Mcp/` | `McpToolProvider` (lazy connections, `${env:}` expansion, approval classification) |
 | | `Skills/` | `FileSkillsProviderFactory` (Agent Framework `AgentSkillsProvider`), `SkillScriptRunner` |
@@ -60,6 +62,7 @@ Domain has no package references at all. Application only knows Agent Framework 
 | | `Secrets/` | `EnvironmentVariableSecretStore`, `SecretRedactor` |
 | | `Memory/` | `JsonMemoryRepository` (`%AppData%\NexusShell\agent\memory\memories.json`) |
 | | `Chats/` `Scheduling/` | `JsonChatStore` (one folder per chat; deleting goes to the Recycle Bin), `JsonScheduledTaskStore` (`agent\schedule\tasks.json`) |
+| | `Connectors/` | `OAuthAccount` (browser sign-in, PKCE, loopback), `ConnectorHttp`, `Google/` (Gmail, Calendar), `Microsoft/` (Outlook mail, calendar), `GitHub/`, `UserMcpSettingsStore` |
 | | `Agent/` | **Bundled content**: `agent.json`, `instructions.md`, `experts/*.md`, `skills/*/SKILL.md` |
 
 ## How a request flows (MoE mode)
@@ -140,6 +143,34 @@ The shared house rules (`Agent/instructions.md`, "Accuracy") tell every expert t
 - Runs are **unattended** (`ConversationOptions.Unattended`): `InlineToolApprovalAgent` declines every action that needs approval instead of opening a dialog nobody may answer, and the answer says what still needs the user.
 - The agent can create, list and cancel tasks with `schedule_task`, `list_scheduled_tasks` and `cancel_scheduled_task`. Creating and cancelling always ask the user, and a scheduled run can never schedule more work.
 
+## Connectors (Gmail, Google Calendar, Outlook, GitHub, and MCP apps)
+
+**Built-in connectors** (`Infrastructure/Connectors`) give every expert tools while the connector is connected (`IConnectorService.ActiveToolCategories`):
+
+| Connector | Sign-in | Read (no approval) | Change (always asks) |
+|---|---|---|---|
+| Google | OAuth: your own Google Cloud "Desktop app" client; scopes `gmail.readonly`, `gmail.compose`, `calendar.events` | `gmail_search`, `gmail_read`, `google_calendar_list_events` | `gmail_create_draft`, `gmail_send`, `gmail_reply`, `google_calendar_create_event`, `google_calendar_delete_event` |
+| Microsoft | OAuth: your own Entra app registration (public client, no secret); `Mail.ReadWrite`, `Mail.Send`, `Calendars.ReadWrite` | `outlook_search_mail`, `outlook_read_mail`, `outlook_list_events` | `outlook_create_draft`, `outlook_send_mail`, `outlook_reply`, `outlook_create_event`, `outlook_delete_event` |
+| GitHub | Fine-grained personal access token in `GITHUB_TOKEN` | repositories, issues, pull requests, search, notifications | `github_create_issue`, `github_comment` |
+
+How sign-in works (`OAuthAccount`, following RFC 8252 for desktop apps):
+- The provider's own page opens in the user's default browser; NexusShell never sees the password.
+- The answer returns to a one-time loopback listener (127.0.0.1 or ::1, random port).
+- PKCE (S256) and a state value protect the exchange.
+- Only the refresh token is kept, in a user environment variable (`NEXUS_GOOGLE_REFRESH_TOKEN` or `NEXUS_MICROSOFT_REFRESH_TOKEN`), so the secret redactor keeps it away from models. Access tokens stay in memory.
+- A revoked sign-in is forgotten and the user is asked to sign in again.
+
+How connector content and actions are kept safe:
+- Mail, issue and event text is returned with a note that it is outside content: data, not instructions.
+- Recipients are validated and subjects kept on one line, so mail headers cannot be injected.
+- Repository names are validated.
+- Scheduled runs are unattended, so they can read and summarize but never send.
+
+**MCP connectors** (`McpConnectorPresets`) are templates for apps without a built-in connector: GitHub's official remote MCP server, Notion, Jira and Confluence (`uvx mcp-atlassian`), Slack, Playwright browser automation, and Context7 documentation.
+- Adding one writes an entry to the user's `mcp.json` with `${env:NAME}` references only, `"allExperts": true` (every expert gets its tools) and `"trustReadOnlyHints": true`; anything else still asks.
+- The window checks that the needed runtime (npx, uvx) is installed.
+- On Windows, launchers that are not `.exe` (such as `npx`) run through `cmd.exe /c`.
+
 ## Security model
 
 | Concern | How it is handled |
@@ -153,6 +184,7 @@ The shared house rules (`Agent/instructions.md`, "Accuracy") tell every expert t
 | Secrets in memory | `remember` and the Memory window refuse anything that looks like a key, token, private key or password assignment, and the value of any credential environment variable. |
 | Saved chats | Messages are masked (credential-shaped text and known secret values) before they are written. Chat ids are checked, so a path cannot escape the chats folder. |
 | Scheduled runs | They are unattended, so actions needing approval are declined, never taken. Creating a schedule always asks the user. Prompts containing secrets are refused. |
+| Connectors | Sign-in happens in the user's browser (OAuth with PKCE, loopback redirect, state check). Refresh tokens and API tokens live only in user environment variables and are redacted from model traffic. Sending, creating and deleting always ask. External content is marked as data. Mail headers cannot be injected. |
 | SSRF | `fetch_url` allows only http(s) to **public** IPs. The IP is checked again on every redirect and at socket connect time, which blocks DNS-rebinding attacks. |
 | Skill scripts | Off by default (scripts are not even listed to the model). When enabled, every run still asks for approval. |
 | Prompt injection | House rules tell experts to treat web, file, MCP and command output as data. Approvals and redaction enforce this in code. |
