@@ -1,0 +1,54 @@
+{
+  "name": "transcribe",
+  "title": "Transcribe audio and video",
+  "version": "1.0.0",
+  "description": "Turns the speech in an audio or video file into text (Arabic, English and about 100 other languages, detected automatically), and saves it as a .txt transcript, .srt subtitles and .json. Use it whenever the user wants a transcript, subtitles, minutes or a summary of a recording, lecture, meeting or video.",
+  "runtime": "python",
+  "python": "3.12",
+  "entry": "scripts/run.py",
+  "setupScript": "scripts/setup.py",
+  "install": [
+    { "packages": [ "torch" ], "indexUrl": "https://download.pytorch.org/whl/cpu" },
+    { "requirements": "requirements.txt" }
+  ],
+  "risk": "read",
+  "timeoutMinutes": 480,
+  "setupSize": "about 2.3 GB, once: Python with its speech libraries (about 0.7 GB) and the turbo speech model (1.6 GB)",
+  "parameters": [
+    {
+      "name": "file",
+      "type": "file",
+      "required": true,
+      "description": "The recording to transcribe.",
+      "extensions": [ ".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".wma", ".amr", ".webm", ".mp4", ".mkv", ".mov", ".avi", ".wmv", ".m4v", ".3gp" ]
+    },
+    {
+      "name": "language",
+      "type": "text",
+      "description": "Language code to use instead of detecting it (ar, en, fr ...). Leave empty to detect it."
+    },
+    {
+      "name": "timestamps",
+      "type": "boolean",
+      "default": false,
+      "description": "Start every paragraph of the .txt with its time, e.g. [00:12:30]."
+    },
+    {
+      "name": "model",
+      "type": "choice",
+      "choices": [ "turbo", "small", "medium", "large-v3" ],
+      "default": "turbo",
+      "description": "Speech model. turbo (1.6 GB) is accurate and fast and is installed by the setup; small (0.5 GB) is quicker but weaker on Arabic; medium (1.5 GB) and large-v3 (3.1 GB) download on first use."
+    },
+    {
+      "name": "hotwords",
+      "type": "text",
+      "description": "Names and terms the recording uses, comma separated, so they are spelled right."
+    },
+    {
+      "name": "output_folder",
+      "type": "folder",
+      "description": "Folder for the transcript files. Default: Documents\\NexusShell\\transcribe."
+    }
+  ]
+}

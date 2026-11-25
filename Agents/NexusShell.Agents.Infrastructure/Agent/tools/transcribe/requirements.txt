@@ -1,0 +1,14 @@
+# Installed after torch, which tool.json takes from PyTorch's CPU-only index
+# (a few hundred MB instead of several GB for the CUDA build).
+
+# Speech recognition. Reads OpenAI's own .pt checkpoints from openaipublic.azureedge.net
+# and carries its tokenizer, so it needs nothing from huggingface.co.
+openai-whisper==20250625
+
+# For its Silero voice detector, which splits the audio on silence (engine/chunking.py).
+faster-whisper>=1.2.0
+
+numpy>=2.0
+
+# A static ffmpeg build inside a wheel (about 30 MB): decodes every audio and video format.
+imageio-ffmpeg>=0.6.0
