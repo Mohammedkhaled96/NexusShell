@@ -1,0 +1,126 @@
+<Window x:Class="NexusShell.App.Views.AgentToolsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:viewModels="clr-namespace:NexusShell.App.ViewModels"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance Type=viewModels:AgentToolsViewModel, IsDesignTimeCreatable=False}"
+        Title="NexusShell tools" Height="720" Width="1000"
+        Background="#1E1E1E" Foreground="#E0E0E0"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize" MinWidth="640" MinHeight="520"
+        AutomationProperties.Name="NexusShell tools">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <Style x:Key="FormButton" TargetType="Button">
+            <Setter Property="Background" Value="#3C3C3C"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="MinWidth" Value="110"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Margin" Value="0,0,8,8"/>
+            <Setter Property="Padding" Value="10,0"/>
+        </Style>
+        <Style x:Key="Heading" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#E0E0E0"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,10,0,4"/>
+        </Style>
+        <Style x:Key="ReadOnlyText" TargetType="TextBox">
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Background" Value="#252526"/>
+            <Setter Property="Foreground" Value="#E0E0E0"/>
+            <Setter Property="BorderBrush" Value="#444"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="320"/>
+            <ColumnDefinition Width="20"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <TextBlock Grid.Row="0" Grid.ColumnSpan="3" TextWrapping="Wrap" Margin="0,0,0,12" Foreground="#CCCCCC" FontSize="13"
+                   Text="Tools that run on this computer, so you do not need a separate program for each job. Pick a tool and a file, or just ask NexusAgent: it chooses the right tool by itself. What a tool needs is downloaded once, the first time."/>
+
+        <DockPanel Grid.Row="1" Grid.Column="0">
+            <Label DockPanel.Dock="Top" Content="_Tools:" Target="{Binding ElementName=ToolList}" Foreground="#CCCCCC" Padding="0,0,0,4"/>
+            <TextBlock DockPanel.Dock="Bottom" Text="{Binding Problems}" TextWrapping="Wrap" Foreground="#E0B060" Margin="0,8,0,0"
+                       Visibility="{Binding HasProblems, Converter={StaticResource BoolToVis}}"/>
+            <ListBox x:Name="ToolList" ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}" DisplayMemberPath="Text"
+                     Background="#252526" Foreground="#E0E0E0" BorderBrush="#444"
+                     AutomationProperties.Name="{Binding Summary}"
+                     AutomationProperties.HelpText="The details of the selected tool appear on the right.">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="AutomationProperties.Name" Value="{Binding AutomationName}"/>
+                        <Setter Property="Padding" Value="6,5"/>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+            </ListBox>
+        </DockPanel>
+
+        <ScrollViewer Grid.Row="1" Grid.Column="2" VerticalScrollBarVisibility="Auto" Focusable="False">
+            <StackPanel DataContext="{Binding Selected}" Visibility="{Binding DataContext.HasSelection, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="{Binding Title}" FontSize="18" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding StateText}" Foreground="#4FC3F7" Margin="0,2,0,6"/>
+                <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Foreground="#CCCCCC"/>
+                <TextBlock Text="{Binding Origin}" Foreground="#AAAAAA" FontSize="12" Margin="0,4,0,0"/>
+
+                <TextBlock Text="What you can ask for" Style="{StaticResource Heading}"/>
+                <TextBox Text="{Binding Inputs, Mode=OneWay}" Style="{StaticResource ReadOnlyText}" AutomationProperties.Name="What you can ask for"
+                         AutomationProperties.HelpText="The tool's options, one per line. Mention them in the chat, for example: with timestamps."/>
+
+                <TextBlock Text="Download and space" Style="{StaticResource Heading}"/>
+                <TextBox Text="{Binding SetupText, Mode=OneWay}" Style="{StaticResource ReadOnlyText}" AutomationProperties.Name="Download and space"/>
+
+                <TextBlock Text="Results are saved in" Style="{StaticResource Heading}"/>
+                <TextBox Text="{Binding OutputFolder, Mode=OneWay}" Style="{StaticResource ReadOnlyText}" AutomationProperties.Name="Results are saved in"/>
+
+                <WrapPanel Margin="0,8,0,0">
+                    <Button Content="_Use with a file..." Click="UseWithFile_Click" Style="{StaticResource FormButton}" Background="#007ACC" FontWeight="SemiBold"
+                            IsEnabled="{Binding DataContext.IsIdle, RelativeSource={RelativeSource AncestorType=Window}}"
+                            AutomationProperties.Name="Use with a file"
+                            AutomationProperties.HelpText="Choose a file. NexusAgent then uses this tool on it, with anything you typed in the chat box as instructions."/>
+                    <Button Content="_Set up" Click="SetUp_Click" Style="{StaticResource FormButton}"
+                            Visibility="{Binding NeedsSetup, Converter={StaticResource BoolToVis}}"
+                            IsEnabled="{Binding DataContext.IsIdle, RelativeSource={RelativeSource AncestorType=Window}}"
+                            AutomationProperties.Name="Set up: download what this tool needs"/>
+                    <Button Content="S_top setup" Click="CancelSetup_Click" Style="{StaticResource FormButton}"
+                            Visibility="{Binding DataContext.IsBusy, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}"
+                            AutomationProperties.Name="Stop the setup"/>
+                    <Button Content="Open _results folder" Click="OpenOutput_Click" Style="{StaticResource FormButton}"
+                            AutomationProperties.Name="Open the results folder"/>
+                    <Button Content="_Remove downloads" Click="Remove_Click" Style="{StaticResource FormButton}"
+                            Visibility="{Binding IsReady, Converter={StaticResource BoolToVis}}"
+                            IsEnabled="{Binding DataContext.IsIdle, RelativeSource={RelativeSource AncestorType=Window}}"
+                            AutomationProperties.Name="Remove this tool's downloads"/>
+                </WrapPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Grid Grid.Row="2" Grid.ColumnSpan="3" Margin="0,12,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock TextWrapping="Wrap" Foreground="#4FC3F7" VerticalAlignment="Center"
+                       Text="{Binding StatusMessage}"
+                       AutomationProperties.LiveSetting="Polite"
+                       AutomationProperties.Name="{Binding StatusMessage}"/>
+            <Button Grid.Column="1" Content="Close" IsCancel="True" Click="Close_Click" Style="{StaticResource FormButton}" Margin="12,0,0,0"
+                    AutomationProperties.Name="Close tools"/>
+        </Grid>
+    </Grid>
+</Window>

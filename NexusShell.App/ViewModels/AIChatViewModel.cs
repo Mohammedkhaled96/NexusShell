@@ -34,6 +34,7 @@ namespace NexusShell.App.ViewModels
         private readonly Action<string?>? _openMemory;
         private readonly NexusShell.Agents.Application.Connectors.IConnectorService? _connectorService;
         private readonly Action? _openConnectors;
+        private readonly Func<string?, string?>? _openTools;
         private readonly string _initialContext;
         private readonly List<Dictionary<string, string>> _history;
 
@@ -131,6 +132,9 @@ namespace NexusShell.App.ViewModels
         public ICommand ManageProvidersCommand { get; }
         public ICommand OpenMemoryCommand { get; }
         public ICommand OpenConnectorsCommand { get; }
+
+        /// <summary>NexusShell tools: pick a tool and a file; the request is sent with what was typed as instructions.</summary>
+        public ICommand OpenToolsCommand { get; }
         public ICommand RefreshAgentCommand { get; }
         public ICommand ClearWorkingFolderCommand { get; }
         public ICommand RemoveAttachmentCommand { get; }
@@ -155,7 +159,8 @@ namespace NexusShell.App.ViewModels
             NexusShell.Agents.Application.Scheduling.IAgentScheduler? scheduler = null,
             Action<Action<string>?>? openSchedule = null,
             NexusShell.Agents.Application.Connectors.IConnectorService? connectors = null,
-            Action? openConnectors = null)
+            Action? openConnectors = null,
+            Func<string?, string?>? openTools = null)
         {
             _aiService = aiService;
             _configManager = configManager;
@@ -166,6 +171,7 @@ namespace NexusShell.App.ViewModels
             _openMemory = openMemory;
             _connectorService = connectors;
             _openConnectors = openConnectors;
+            _openTools = openTools;
             _initialContext = initialContext ?? string.Empty;
 
             var settings = _configManager.Load();
@@ -248,6 +254,19 @@ namespace NexusShell.App.ViewModels
                     await ReloadAgentAsync(); // new connections give the agent their tools
                 },
                 _ => _openConnectors != null);
+
+            OpenToolsCommand = new RelayCommand(
+                async _ =>
+                {
+                    string? instructions = string.IsNullOrWhiteSpace(CurrentMessage) ? null : CurrentMessage.Trim();
+                    string? request = _openTools?.Invoke(instructions);
+                    // A tool added or set up in the window is offered at once (the agent keeps its history).
+                    await ReloadAgentAsync();
+                    if (request is null) return;
+                    CurrentMessage = request;
+                    await ExecuteSendMessage();
+                },
+                _ => _openTools != null && UseAgent && !IsSending);
 
             OpenMemoryCommand = new RelayCommand(
                 _ => _openMemory?.Invoke(Workspace.WorkingDirectory),
@@ -612,6 +631,7 @@ namespace NexusShell.App.ViewModels
             "/new  starts a new chat. /chats lists saved chats. /open NUMBER or TITLE reopens one to continue it. /rename TITLE renames this chat.\n" +
             "/schedule  opens scheduled tasks. /tasks lists them. You can also ask: every weekday at 9 check free disk space.\n" +
             "/connectors  opens Connectors (Gmail, Google Calendar, Outlook, GitHub, Notion, Jira, Slack ...) and says which apps are connected.\n" +
+            "/use  opens NexusShell tools (Transcribe ...): pick a tool and a file. Or just ask, for example: transcribe the meeting recording in Downloads.\n" +
             "/status  says the agent status and current choices.\n" +
             "/reload  reloads providers, models and MCP servers.\n" +
             "/clear  clears the conversation.";
@@ -620,7 +640,7 @@ namespace NexusShell.App.ViewModels
         {
             "help", "?", "model", "models", "expert", "experts", "mode", "permissions", "folder", "cd", "attach", "tools", "status", "reload", "clear",
             "remember", "memory", "memories", "forget",
-            "new", "chats", "open", "rename", "schedule", "tasks", "connectors", "connect",
+            "new", "chats", "open", "rename", "schedule", "tasks", "connectors", "connect", "use",
         };
 
         private async Task<bool> TryRunSlashCommandAsync(string message)
@@ -657,6 +677,7 @@ namespace NexusShell.App.ViewModels
                 "schedule" => ScheduleCommandText(),
                 "tasks" => await TasksCommandAsync(),
                 "connectors" or "connect" => ConnectorsCommandText(),
+                "use" => UseToolCommandText(),
                 "reload" => await ReloadCommandAsync(),
                 "clear" => ClearCommand(),
                 _ => SlashHelp,
@@ -791,6 +812,17 @@ namespace NexusShell.App.ViewModels
         {
             NewChat();
             return string.Empty;
+        }
+
+        private string UseToolCommandText()
+        {
+            if (_openTools is null) return "NexusShell tools are not available.";
+            // After this command finishes, so the chosen request is sent as a normal message.
+            System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
+            {
+                if (OpenToolsCommand.CanExecute(null)) OpenToolsCommand.Execute(null);
+            });
+            return "Opening NexusShell tools.";
         }
 
         private string ConnectorsCommandText()

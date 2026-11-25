@@ -230,6 +230,9 @@
                             AutomationProperties.Name="Connectors"
                             AutomationProperties.AccessKey="Alt+G"
                             AutomationProperties.HelpText="Connect Gmail, Google Calendar, Outlook, GitHub, Notion, Jira, Slack and more. Shortcut Alt+G." />
+                    <Button Content="_Use a tool..." Command="{Binding OpenToolsCommand}" Style="{StaticResource WorkspaceButton}"
+                            AutomationProperties.Name="Use a tool"
+                            AutomationProperties.HelpText="NexusShell tools such as Transcribe: pick a tool and a file, and NexusAgent uses it. What you typed in the message box is sent as instructions. You can also just ask in a message." />
                     <Button Content="Memor_y..." Command="{Binding OpenMemoryCommand}" Style="{StaticResource WorkspaceButton}"
                             AutomationProperties.Name="Long-term memory"
                             AutomationProperties.HelpText="Review, add, correct, pin or delete what NexusAgent remembers between conversations." />

@@ -24,6 +24,9 @@ namespace NexusShell.App.Interfaces
         void ShowAgentMemoryWindow(string? workingFolder = null);
         void ShowAgentScheduleWindow(Action<string>? openChat = null);
         void ShowAgentConnectorsWindow();
+
+        /// <summary>NexusShell tools. Returns the chat request when the user picked a tool and a file, otherwise null.</summary>
+        string? ShowAgentToolsWindow(string? instructions = null);
         void ShowApiTesterWindow();
         Shortcut? ShowAddEditShortcutWindow(List<string> availableCommands, Shortcut? shortcut = null);
         EnvVariable? ShowAddEditEnvWindow(EnvVariable? variable = null);

@@ -118,6 +118,7 @@ namespace NexusShell.App
             services.AddTransient<AgentMemoryViewModel>();
             services.AddTransient<AgentScheduleViewModel>();
             services.AddTransient<AgentConnectorsViewModel>();
+            services.AddTransient<AgentToolsViewModel>();
 
             services.AddSingleton<IOutputHistoryService, OutputHistoryService>();
             services.AddSingleton<INotificationService, NotificationService>();

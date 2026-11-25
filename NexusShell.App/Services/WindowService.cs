@@ -304,7 +304,8 @@ namespace NexusShell.App.Services
                 scheduler,
                 scheduler is null ? null : ShowAgentScheduleWindow,
                 _serviceProvider.GetService<NexusShell.Agents.Application.Connectors.IConnectorService>(),
-                agentService is null ? null : ShowAgentConnectorsWindow);
+                agentService is null ? null : ShowAgentConnectorsWindow,
+                agentService is null ? null : ShowAgentToolsWindow);
             var window    = new AIChatWindow(viewModel, _serviceProvider.GetService<IScreenReaderAnnouncer>());
             VisualEffects.FadeInWindow(window);
             window.Show();
@@ -318,6 +319,17 @@ namespace NexusShell.App.Services
             var owner = Application.Current?.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive);
             if (owner != null && owner != window) window.Owner = owner;
             window.ShowDialog();
+        }
+
+        public string? ShowAgentToolsWindow(string? instructions = null)
+        {
+            PlaySound(AppSound.OpenManager);
+            var viewModel = _serviceProvider.GetRequiredService<AgentToolsViewModel>();
+            viewModel.Instructions = instructions;
+            var window = new AgentToolsWindow(viewModel);
+            var owner = Application.Current?.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive);
+            if (owner != null && owner != window) window.Owner = owner;
+            return window.ShowDialog() == true ? viewModel.Request : null;
         }
 
         public void ShowAgentScheduleWindow(Action<string>? openChat = null)
