@@ -57,6 +57,7 @@ Domain has no package references at all. Application only knows Agent Framework 
 | Infrastructure | `Providers/` | `OpenAICompatibleProviderAdapter`, `AnthropicProviderAdapter`, `OllamaProviderAdapter`, `ChatClientFactory`, `ProviderAvailability` |
 | | `Mcp/` | `McpToolProvider` (lazy connections, `${env:}` expansion, approval classification) |
 | | `Skills/` | `FileSkillsProviderFactory` (Agent Framework `AgentSkillsProvider`), `SkillScriptRunner` |
+| | `ToolPackages/` | `FileToolPackageCatalog` (tool.json), `ToolPackageRuntime` (per-tool Python environments with uv, script protocol), `UvBootstrapper` |
 | | `Tools/<Category>/` | `SystemInfo`, `FileSystem`, `Shell`, `Web` tool providers |
 | | `Configuration/` `Experts/` | JSON DTOs, merge and validation, front-matter parser, Markdown expert loader, user folder scaffold |
 | | `Secrets/` | `EnvironmentVariableSecretStore`, `SecretRedactor` |
@@ -170,6 +171,27 @@ How connector content and actions are kept safe:
 - Adding one writes an entry to the user's `mcp.json` with `${env:NAME}` references only, `"allExperts": true` (every expert gets its tools) and `"trustReadOnlyHints": true`; anything else still asks.
 - The window checks that the needed runtime (npx, uvx) is installed.
 - On Windows, launchers that are not `.exe` (such as `npx`) run through `cmd.exe /c`.
+
+## NexusShell tools (tool packages)
+
+A tool is a folder in `Agent\tools\<name>` (shipped) or `%AppData%\NexusShell\agent\tools\<name>` (added by a developer):
+`tool.json` (inputs, runtime, install steps), `SKILL.md` (when and how the agent uses it) and the scripts.
+**To add a tool, follow [ADDING_TOOLS.md](ADDING_TOOLS.md)**: every step for developers, and the procedure AI coding agents must
+follow. The short reference card is `Infrastructure/Agent/tools/README.md`. The first tool is **transcribe**, built on Sada's speech engine.
+
+- **The agent sees each tool as a function** (`tool_<name>`), with a JSON schema built from its parameters, offered to every
+  expert. Its SKILL.md is a skill the agent reads on demand. The user can also pick a tool and a file in the chat window
+  (**Use a tool**, Alt+U, or `/use`); what they typed is sent as instructions.
+- **Arguments are checked before anything runs:** files and folders exist, the extension is allowed, choices are valid,
+  unknown parameters are refused.
+- **Small program, installed on first use:** a Python tool gets its own environment under `%LOCALAPPDATA%\NexusShell\tools`,
+  created with uv 0.13.8 (downloaded from GitHub once and checked against its published SHA-256), with libraries from PyPI
+  or the index the tool names (PyTorch's CPU build for transcribe). The optional setup script then downloads models.
+  `setup_tool` always asks the user, and the Tools window says what will be downloaded. Remove frees the space.
+- **Script protocol:** arguments in a JSON file (`NEXUS_TOOL_ARGS`); one JSON object per output line for progress, result
+  and error; data and output folders in `NEXUS_TOOL_DATA` and `NEXUS_TOOL_OUTPUT`. Progress is narrated in the chat.
+- **Safety:** a tool's scripts run only through its own function, never as loose skill scripts. `risk` in tool.json drives
+  approval like any tool. Output is marked as data. A time limit stops runaway scripts. The tool folder is never written to.
 
 ## Security model
 
