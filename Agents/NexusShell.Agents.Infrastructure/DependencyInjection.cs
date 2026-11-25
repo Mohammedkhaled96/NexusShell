@@ -28,6 +28,7 @@ using NexusShell.Agents.Infrastructure.Tools.FileSystem;
 using NexusShell.Agents.Infrastructure.Tools.Shell;
 using NexusShell.Agents.Infrastructure.Tools.SystemInfo;
 using NexusShell.Agents.Infrastructure.Tools.Web;
+using NexusShell.Agents.Infrastructure.ToolPackages;
 
 namespace NexusShell.Agents.Infrastructure;
 
@@ -117,6 +118,13 @@ public static class DependencyInjection
         services.TryAddSingleton<IMcpToolProvider, McpToolProvider>();
         services.TryAddSingleton<SkillScriptRunner>();
         services.TryAddSingleton<ISkillsProviderFactory, FileSkillsProviderFactory>();
+
+        // NexusShell tools: folders with tool.json + SKILL.md + scripts; what they need is installed on first use.
+        services.AddHttpClient(UvBootstrapper.HttpClientName, c => c.Timeout = TimeSpan.FromMinutes(10));
+        services.TryAddSingleton(new ToolPackageOptions());
+        services.TryAddSingleton<UvBootstrapper>();
+        services.TryAddSingleton<Application.ToolPackages.IToolPackageCatalog, FileToolPackageCatalog>();
+        services.TryAddSingleton<Application.ToolPackages.IToolPackageRuntime, ToolPackageRuntime>();
 
         // Built-in tools (one provider per category)
         services.AddAgentToolProvider<SystemInfoToolProvider>();

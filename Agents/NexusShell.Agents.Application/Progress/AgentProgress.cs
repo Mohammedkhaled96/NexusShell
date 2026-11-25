@@ -28,6 +28,9 @@ public enum AgentProgressKind
 
     /// <summary>Old turns are being summarized so the conversation keeps fitting the context window.</summary>
     CompactingHistory,
+
+    /// <summary>A NexusShell tool reports how far it got (<see cref="AgentProgress.Message"/>, e.g. "Transcribing (40%)").</summary>
+    ToolProgress,
 }
 
 /// <summary>

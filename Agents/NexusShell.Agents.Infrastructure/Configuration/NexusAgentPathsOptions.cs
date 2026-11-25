@@ -13,6 +13,7 @@ namespace NexusShell.Agents.Infrastructure.Configuration;
 /// mcp.json            MCP servers ("mcpServers" format)
 /// experts/*.md        one expert per file (front-matter + instructions)
 /// skills/&lt;name&gt;/SKILL.md   Agent Skills
+/// tools/&lt;name&gt;/tool.json    NexusShell tools (tool.json + SKILL.md + scripts)
 /// </code>
 /// </summary>
 public sealed class NexusAgentPathsOptions
@@ -28,6 +29,10 @@ public sealed class NexusAgentPathsOptions
     public string BundledSkillsDirectory => Path.Combine(BundledDirectory, "skills");
 
     public string UserSkillsDirectory => Path.Combine(UserDirectory, "skills");
+
+    public string BundledToolsDirectory => Path.Combine(BundledDirectory, "tools");
+
+    public string UserToolsDirectory => Path.Combine(UserDirectory, "tools");
 
     public string BundledExpertsDirectory => Path.Combine(BundledDirectory, "experts");
 

@@ -61,7 +61,8 @@ internal sealed class ExpertAgentFactory(
     IModelHealthRegistry modelHealth,
     IAgentMemory memory,
     ConversationSummarizer summarizer,
-    Connectors.IConnectorService connectors) : IExpertAgentFactory
+    Connectors.IConnectorService connectors,
+    ToolPackages.ToolPackageToolProvider toolPackages) : IExpertAgentFactory
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<ExpertAgentFactory>();
 
@@ -119,6 +120,11 @@ internal sealed class ExpertAgentFactory(
             foreach (var descriptor in await mcpToolProvider.GetToolsAsync(mcpSelectors, cancellationToken).ConfigureAwait(false))
                 AddTool(descriptor);
         }
+
+        // NexusShell tools (tool packages such as transcribe): every expert can use them; read fresh,
+        // so a package added after start is offered too.
+        foreach (var descriptor in toolPackages.GetTools())
+            AddTool(descriptor);
 
         // Connected apps (Gmail, Calendar, Outlook, GitHub ...): reading is free, sending and changing ask first.
         foreach (string category in connectors.ActiveToolCategories())

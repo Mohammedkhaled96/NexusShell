@@ -51,6 +51,7 @@ public static class AgentProgressNarrator
                 : null,
             AgentProgressKind.MemorySaved => ar ? "تم حفظ معلومة في الذاكرة." : "Saved to memory.",
             AgentProgressKind.CompactingHistory => ar ? "جارٍ تلخيص بداية المحادثة للاحتفاظ بها." : "Summarizing the earlier conversation to keep it in mind.",
+            AgentProgressKind.ToolProgress => string.IsNullOrWhiteSpace(step.Message) ? null : $"{step.ToolName}: {step.Message}",
             _ => string.IsNullOrWhiteSpace(step.Message) ? null : step.Message,
         };
     }
@@ -136,6 +137,14 @@ public static class AgentProgressNarrator
         {
             if (name.StartsWith(prefix, StringComparison.Ordinal))
                 return ($"working with {english}", $"use {english}", $"العمل مع {arabic}");
+        }
+
+        // NexusShell tools (tool packages): "tool_transcribe" is spoken as "transcribe".
+        if (name == "setup_tool") return ("setting up a tool", "set up a tool", "تجهيز أداة");
+        if (name.StartsWith("tool_", StringComparison.Ordinal))
+        {
+            string package = Words(name[5..]);
+            return ($"using the {package} tool", $"use the {package} tool", $"استخدام أداة {package}");
         }
 
         if (name.StartsWith("ask_", StringComparison.Ordinal))

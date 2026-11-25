@@ -52,6 +52,10 @@ public static class DependencyInjection
         // Connectors to external applications (adapters come from Infrastructure).
         services.TryAddSingleton<Connectors.IConnectorService, Connectors.ConnectorService>();
         services.TryAddSingleton<IAgentScheduler, AgentScheduler>();
+
+        // NexusShell tools: packages of scripts with tool.json and SKILL.md (catalog and runtime come from Infrastructure).
+        services.TryAddSingleton<ToolPackages.ToolPackageToolProvider>();
+        services.TryAddSingleton<ToolPackages.IToolPackageService, ToolPackages.ToolPackageService>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IAgentToolProvider, ScheduleToolProvider>());
 
         services.TryAddSingleton<ResponseSynthesizer>();

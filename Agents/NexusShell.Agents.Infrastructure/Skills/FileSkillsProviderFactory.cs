@@ -18,10 +18,12 @@ namespace NexusShell.Agents.Infrastructure.Skills;
 internal sealed class FileSkillsProviderFactory(
     NexusAgentPathsOptions paths,
     SkillScriptRunner scriptRunner,
+    Application.ToolPackages.IToolPackageCatalog toolPackages,
     ILoggerFactory loggerFactory) : ISkillsProviderFactory
 {
+    /// <summary>Skill folders, plus the tool folders: a tool's SKILL.md tells the agent when and how to use it.</summary>
     public IReadOnlyList<string> SkillDirectories =>
-        new[] { paths.BundledSkillsDirectory, paths.UserSkillsDirectory }
+        new[] { paths.BundledSkillsDirectory, paths.UserSkillsDirectory, paths.BundledToolsDirectory, paths.UserToolsDirectory }
             .Where(Directory.Exists)
             .ToList();
 
@@ -38,8 +40,15 @@ internal sealed class FileSkillsProviderFactory(
         if (!all && allowed.All(disabled.Contains)) return null;
 
         bool scripts = configuration.Skills.EnableScripts;
-        var fileOptions = new AgentFileSkillsSourceOptions { SearchDepth = 2 };
-        if (!scripts) fileOptions.ScriptFilter = _ => false; // scripts are not even advertised to the model
+        // A tool package's scripts run only through its own tool (its environment, progress, time limit),
+        // never as loose skill scripts; of its files only the Markdown documentation is a readable resource.
+        var tools = toolPackages.List().Select(t => t.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var fileOptions = new AgentFileSkillsSourceOptions
+        {
+            SearchDepth = 2,
+            ScriptFilter = context => scripts && !tools.Contains(context.SkillName),
+            ResourceFilter = context => !tools.Contains(context.SkillName) || context.RelativeFilePath.EndsWith(".md", StringComparison.OrdinalIgnoreCase),
+        };
 
         // The framework requires a runner for file skills; when scripts are disabled the runner refuses.
         var builder = new AgentSkillsProviderBuilder()

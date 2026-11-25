@@ -19,6 +19,7 @@ internal static class UserDirectoryScaffold
         | `mcp.json` | MCP servers (`mcpServers` format, same as Claude Desktop / Cursor). |
         | `experts/*.md` | Experts: front-matter (name, description, model, keywords, tools, skills, mcp, subagents) + instructions. Same file name as a bundled expert = override; `enabled: false` = switch it off. |
         | `skills/<name>/SKILL.md` | Agent Skills (folder name must equal the skill `name`). |
+        | `tools/<name>/` | NexusShell tools: `tool.json` (inputs, runtime, install steps), `SKILL.md` (when and how the agent uses it) and the scripts. See README.md in the bundled Agent\tools folder. |
 
         ## Secrets (API keys, tokens)
 
@@ -57,6 +58,7 @@ internal static class UserDirectoryScaffold
             Directory.CreateDirectory(paths.UserDirectory);
             Directory.CreateDirectory(paths.UserExpertsDirectory);
             Directory.CreateDirectory(paths.UserSkillsDirectory);
+            Directory.CreateDirectory(paths.UserToolsDirectory);
             WriteIfMissing(Path.Combine(paths.UserDirectory, "README.md"), Readme);
             WriteIfMissing(Path.Combine(paths.UserDirectory, "mcp.json"), McpTemplate);
         }
